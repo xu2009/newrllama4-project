@@ -1,5 +1,10 @@
-# --- FILE: .github/workflows/release-builder.yml (FINAL VERSION with Copilot's Fix) ---
+# --- FILE: .github/workflows/release-builder.yml (FINAL & FULLY ROBUST v3) ---
 name: Build and Release Pre-compiled Libraries
+
+# FIX FOR LINUX: Add permissions block to allow uploading to releases.
+permissions:
+  contents: write
+
 on:
   release:
     types: [published]
@@ -51,11 +56,12 @@ jobs:
         echo "##[group]Setting up vcpkg..."
         git clone https://github.com/microsoft/vcpkg.git
         ./vcpkg/bootstrap-vcpkg.bat
-        # Set the official VCPKG_ROOT env var for subsequent steps in this job
-        echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
+        # CRITICAL FIX for Windows: Use absolute path with $GITHUB_WORKSPACE
+        echo "VCPKG_ROOT=$GITHUB_WORKSPACE/vcpkg" >> $GITHUB_ENV
         echo "##[endgroup]"
         echo "##[group]Installing curl via vcpkg..."
-        ./vcpkg/vcpkg install curl:x64-windows-static
+        # Use the VCPKG_ROOT we just defined to call vcpkg.
+        $VCPKG_ROOT/vcpkg install curl:x64-windows-static
         echo "##[endgroup]"
 
     # --- Inject our custom files ---

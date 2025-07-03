@@ -268,8 +268,10 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/llama.pc"
 find_package(CURL REQUIRED)
 
 # 1. Define our own shared library target.
+#    CRITICAL FIX for macOS: Explicitly add gguf.c to our source list.
 add_library(newrllama SHARED
     newrllama_capi.cpp
+    ggml/src/gguf.c 
 )
 
 # 2. Add dependencies to ensure correct build order.
