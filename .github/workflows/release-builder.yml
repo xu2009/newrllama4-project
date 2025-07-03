@@ -70,6 +70,16 @@ jobs:
       run: |
         echo "Running on ${{ runner.os }}"
         cmake --version
+
+    # Step 2.5: Copy custom files to llama.cpp directory
+    - name: Copy custom C-API files
+      shell: bash
+      run: |
+        echo "Copying custom C-API files to llama.cpp directory..."
+        cp custom_files/newrllama_capi.h backend/llama.cpp/
+        cp custom_files/newrllama_capi.cpp backend/llama.cpp/
+        cp custom_files/CMakeLists.txt.custom backend/llama.cpp/CMakeLists.txt
+        echo "Custom files copied successfully"
         
     # Step 3: Configure and build the self-contained library.
     # This block executes the core compilation logic.
