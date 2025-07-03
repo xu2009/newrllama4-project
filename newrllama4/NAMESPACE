@@ -1,0 +1,23 @@
+useDynLib(newrllama4, .registration=TRUE)
+importFrom(Rcpp, evalCpp)
+importFrom(tools, R_user_dir)
+importFrom(utils, download.file, unzip, askYesNo)
+
+# Export installation and utility functions
+export(install_newrllama)
+export(lib_is_installed)
+export(get_lib_path)
+
+# Export main API functions
+export(backend_init)
+export(backend_free)
+export(model_load)
+export(context_create)
+export(tokenize)
+export(detokenize)
+export(apply_chat_template)
+export(generate)
+export(generate_parallel)
+
+# Export debug functions
+export(tokenize_test)

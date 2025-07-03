@@ -1,0 +1,22 @@
+Package: newrllama4
+Type: Package
+Title: R Interface to llama.cpp with Runtime Library Loading
+Version: 1.0.0
+Date: 2025-01-15
+Authors@R: person("yaoshengleo", "Developer", role = c("aut", "cre"), email = "yaoshengleo@example.com")
+Author: yaoshengleo Developer
+Maintainer: yaoshengleo Developer <yaoshengleo@example.com>
+Description: Provides R bindings to the llama.cpp library for running large language models.
+    This package uses a lightweight architecture where the C++ backend library is downloaded
+    at runtime rather than bundled with the package. After installation, users must run
+    install_newrllama() to download the appropriate pre-compiled backend library for their
+    system. Supports text generation, tokenization, and chat template functionality.
+License: MIT + file LICENSE
+Imports: 
+    Rcpp (>= 1.0.14),
+    tools,
+    utils
+URL: https://github.com/xu2009/newrllama4
+BugReports: https://github.com/xu2009/newrllama4/issues
+SystemRequirements: C++17
+Encoding: UTF-8

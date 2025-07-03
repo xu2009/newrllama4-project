@@ -1,0 +1,7 @@
+# --- FILE: newrllama4/src/Makevars (For torch-like scheme) ---
+
+# Rcpp依赖的编译标志
+# Rcpp::compileAttributes() 会自动处理大部分事情
+# 我们只需要确保它能找到Rcpp的头文件
+PKG_CPPFLAGS = `$(R_HOME)/bin/Rscript -e "Rcpp:::CxxFlags()"`
+PKG_LIBS = `$(R_HOME)/bin/Rscript -e "Rcpp:::LdFlags()"` 

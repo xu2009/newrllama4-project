@@ -1,0 +1,147 @@
+# --- FILE: .github/workflows/release-builder.yml ---
+# This workflow automates the cross-platform compilation of the self-contained
+# 'libnewrllama' dynamic library and attaches it to a GitHub Release.
+
+name: Build and Release Pre-compiled Libraries
+
+# This workflow is triggered whenever a new Release is 'published' on GitHub.
+# It will not run on drafts or pre-releases.
+on:
+  release:
+    types: [published]
+
+jobs:
+  # The main build job, which runs for each platform defined in the matrix.
+  build:
+    # A user-friendly name for the job, e.g., "Build for Linux (x64)"
+    name: Build for ${{ matrix.os_name }}
+
+    # The "matrix" strategy creates parallel jobs for each combination of settings.
+    strategy:
+      # We set fail-fast to false, so if one platform fails, the others will continue.
+      fail-fast: false
+      matrix:
+        # Define our target platforms.
+        include:
+          - os: ubuntu-latest
+            os_name: Linux
+            artifact_name: libnewrllama_linux_x64.zip
+            lib_name: libnewrllama.so
+          - os: windows-latest
+            os_name: Windows
+            artifact_name: newrllama_windows_x64.zip
+            lib_name: newrllama.dll
+          - os: macos-13 # Using Ventura for Intel (x86_64) compatibility.
+            os_name: macOS (Intel)
+            artifact_name: libnewrllama_macos_x64.zip
+            lib_name: libnewrllama.dylib
+          - os: macos-14 # Using Sonoma for Apple Silicon (arm64) via a larger runner.
+            os_name: macOS (Apple Silicon)
+            artifact_name: libnewrllama_macos_arm64.zip
+            lib_name: libnewrllama.dylib
+            # Note: GitHub's macos-14 runners are Apple Silicon native.
+
+    # Specify the virtual machine environment for the job.
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    # Step 1: Check out your repository's code.
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        # This is crucial for pulling in the llama.cpp source code.
+        submodules: 'recursive'
+
+    # Step 2: Install platform-specific build dependencies.
+    - name: Install build dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake curl libcurl4-openssl-dev
+
+    - name: Install build dependencies (Windows)
+      if: runner.os == 'Windows'
+      # vcpkg is a C++ package manager that simplifies getting dependencies on Windows.
+      # We use it to get 'curl'.
+      run: vcpkg install curl:x64-windows-static
+
+    # macOS and Windows runners usually have CMake and compilers pre-installed.
+    - name: Echo environment details
+      run: |
+        echo "Running on ${{ runner.os }}"
+        cmake --version
+        
+    # Step 3: Configure and build the self-contained library.
+    # This block executes the core compilation logic.
+    - name: Configure and Build
+      # Use bash shell for consistency across platforms.
+      shell: bash
+      run: |
+        # Navigate to the source code directory.
+        cd backend/llama.cpp
+        
+        # Create a build directory to keep the source tree clean.
+        mkdir build && cd build
+
+        # Define CMake arguments. We force a static build to create .a files.
+        CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF"
+        
+        # Add platform-specific arguments.
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          # On Windows, we need to tell CMake where to find the libraries installed by vcpkg.
+          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static"
+        else
+          # On macOS and Linux, we enable hardware acceleration.
+          CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DLLAMA_METAL=ON"
+        fi
+        
+        # Run CMake to configure the project.
+        echo "Configuring with CMake: $CMAKE_ARGS"
+        cmake .. $CMAKE_ARGS
+        
+        # Run the build command for our custom 'newrllama' target.
+        # We limit to 2 cores (-j 2) to be respectful of shared resources.
+        echo "Building target 'newrllama'..."
+        cmake --build . --config Release --target newrllama -- -j 2
+
+    # Step 4: Prepare the artifact for release.
+    # We create a clean zip file containing only the final library.
+    - name: Package the artifact
+      shell: bash
+      run: |
+        # Create a temporary 'staging' directory for packaging.
+        mkdir -p staging/lib
+        
+        # Define the path to the compiled library.
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          LIB_PATH="backend/llama.cpp/build/bin/Release/${{ matrix.lib_name }}"
+        else
+          LIB_PATH="backend/llama.cpp/build/bin/${{ matrix.lib_name }}"
+        fi
+
+        # Copy the library into the staging directory.
+        echo "Copying $LIB_PATH to staging/lib/"
+        cp "$LIB_PATH" staging/lib/
+
+        # Create the zip archive.
+        echo "Creating zip archive: ${{ matrix.artifact_name }}"
+        cd staging
+        zip -r ../${{ matrix.artifact_name }} .
+        cd ..
+
+    # Step 5: Upload the final zip file to the GitHub Release.
+    # This uses a pre-made action to handle the upload securely.
+    - name: Upload Artifact to Release
+      uses: actions/upload-release-asset@v1
+      env:
+        # The GITHUB_TOKEN is automatically provided by GitHub Actions.
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        # The URL to upload to is automatically found from the 'release' event.
+        upload_url: ${{ github.event.release.upload_url }}
+        # Path to the zip file we just created.
+        asset_path: ./${{ matrix.artifact_name }}
+        # The name the file will have on the release page.
+        asset_name: ${{ matrix.artifact_name }}
+        # The content type of the file.
+        asset_content_type: application/zip 
