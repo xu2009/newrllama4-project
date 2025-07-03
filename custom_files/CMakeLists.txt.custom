@@ -306,10 +306,14 @@ elseif(WIN32)
     )
 endif()
 
-# 5. Add necessary include directories so our C-API file can find "llama.h", etc.
+# 5. Add necessary include directories
 target_include_directories(newrllama PRIVATE
+    # For "llama.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    # For "common.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/common"
+    # For "ggml.h" and other ggml headers (CRITICAL FIX)
+    "${CMAKE_CURRENT_SOURCE_DIR}/ggml/include" 
 )
 
 # 6. Set final properties for our library.
