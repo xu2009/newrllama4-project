@@ -253,21 +253,19 @@ configure_file(cmake/llama.pc.in
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/llama.pc"
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 
-# --- Custom addition for newrllama4 R package (FINAL & FULLY ROBUST) ---
-# This version explicitly lists ALL required source files to build a single,
-# self-contained shared library, solving all platform-specific issues.
+# --- Custom addition for newrllama4 R package (FINAL & EXPLICIT SOURCES) ---
 
-# FIX FOR LINUX: Globally enable Position Independent Code for all targets.
+# FIX FOR LINUX: Globally enable Position Independent Code.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# FIX FOR WINDOWS: Find the cURL library installed by vcpkg.
+# FIX FOR WINDOWS: Find the cURL library.
 if(WIN32)
     find_package(CURL REQUIRED)
 endif()
 
-# Define a list of ALL source files needed from llama.cpp.
-# This is the most robust way to ensure all symbols are included.
-set(LLAMA_CPP_SOURCES
+# CRITICAL FIX for ALL platforms: Explicitly list all required source files.
+# This is the most robust method to ensure a self-contained library.
+set(NEWRLLAMA_SOURCES
     # Our own C-API implementation
     newrllama_capi.cpp
 
@@ -284,20 +282,25 @@ set(LLAMA_CPP_SOURCES
     common/log.cpp
     common/sampling.cpp
 
-    # All essential ggml sources (CRITICAL FIX for macOS)
+    # All essential ggml sources
     ggml/src/ggml.c
     ggml/src/ggml-alloc.c
     ggml/src/ggml-backend.c
+    ggml/src/ggml-metal.m # This will be compiled conditionally on macOS
     ggml/src/ggml-quants.c
-    ggml/src/ggml-threading.c
     ggml/src/ggml-rpc.c
+    ggml/src/ggml-sched.c
+    ggml/src/ggml-cuda.cu # This will be compiled conditionally if CUDA is enabled
+    ggml/src/ggml-sycl.cpp # and so on for other backends
     ggml/src/gguf.c
-    ggml/src/ggml-metal.m # This will only be compiled on macOS
-    # Add other backend sources if needed, e.g., ggml/src/ggml-cuda.cu
+    ggml/src/ggml-common.h # Not a source, but good to remember its location
 )
 
-# Create our final shared library target from the source list.
-add_library(newrllama SHARED ${LLAMA_CPP_SOURCES})
+# Filter out sources that don't exist (like .cu files on non-CUDA systems)
+list(FILTER NEWRLLAMA_SOURCES INCLUDE REGEX ".*")
+
+# Create our final shared library target from the explicit source list.
+add_library(newrllama SHARED ${NEWRLLAMA_SOURCES})
 
 # Add all necessary include directories.
 target_include_directories(newrllama PRIVATE
@@ -312,8 +315,6 @@ target_link_libraries(newrllama PRIVATE
     ${ACCELERATE_LIBS}
     ${METAL_LIBS}
 )
-
-# FIX FOR WINDOWS: Link cURL only on Windows.
 if(WIN32)
     target_link_libraries(newrllama PRIVATE CURL::libcurl)
 endif()

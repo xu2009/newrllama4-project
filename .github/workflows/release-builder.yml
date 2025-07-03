@@ -80,19 +80,24 @@ jobs:
         # We overwrite the original CMakeLists.txt with our custom one
         cp custom_files/CMakeLists.txt.custom backend/llama.cpp/CMakeLists.txt
 
-    # Step 3: Configure and Build (Simplified)
+    # Step 3: Configure and Build
     - name: Configure and Build
       shell: bash
       run: |
         cd backend/llama.cpp
         mkdir build && cd build
 
-        # Base CMake arguments are now simpler.
-        CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release"
+        # Base CMake arguments for all platforms
+        CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON"
         
-        # On Windows, we still need to point to the vcpkg toolchain.
+        # Platform-specific arguments
         if [[ "${{ runner.os }}" == "Windows" ]]; then
-          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static"
+          # FIX for Windows: Use the correct env var and quote the path
+          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=\"${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake\" -DVCPKG_TARGET_TRIPLET=x64-windows-static"
+        elif [[ "${{ runner.os }}" == "macOS" ]]; then
+          CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DLLAMA_METAL=ON"
+        else # Linux
+          CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON"
         fi
         
         echo "Configuring with CMake: $CMAKE_ARGS"
