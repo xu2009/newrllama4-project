@@ -1,4 +1,4 @@
-# --- FILE: .github/workflows/release-builder.yml ---
+# --- FILE: .github/workflows/release-builder.yml (FINAL & ROBUST VERSION) ---
 # This workflow automates the cross-platform compilation of the self-contained
 # 'libnewrllama' dynamic library and attaches it to a GitHub Release.
 
@@ -31,15 +31,14 @@ jobs:
             os_name: Windows
             artifact_name: newrllama_windows_x64.zip
             lib_name: newrllama.dll
-          - os: macos-13 # Using Ventura for Intel (x86_64) compatibility.
+          - os: macos-13
             os_name: macOS (Intel)
             artifact_name: libnewrllama_macos_x64.zip
             lib_name: libnewrllama.dylib
-          - os: macos-14 # Using Sonoma for Apple Silicon (arm64) via a larger runner.
+          - os: macos-14
             os_name: macOS (Apple Silicon)
             artifact_name: libnewrllama_macos_arm64.zip
             lib_name: libnewrllama.dylib
-            # Note: GitHub's macos-14 runners are Apple Silicon native.
 
     # Specify the virtual machine environment for the job.
     runs-on: ${{ matrix.os }}
@@ -53,13 +52,13 @@ jobs:
         submodules: 'recursive'
 
     # Step 2: Install platform-specific build dependencies.
-    - name: Install build dependencies (Linux)
+    - name: Install dependencies (Linux)
       if: runner.os == 'Linux'
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential cmake curl libcurl4-openssl-dev
 
-    - name: Install build dependencies (Windows)
+    - name: Install dependencies (Windows)
       if: runner.os == 'Windows'
       # vcpkg is a C++ package manager that simplifies getting dependencies on Windows.
       # We use it to get 'curl'.
@@ -72,47 +71,59 @@ jobs:
         cmake --version
 
     # Step 2.5: Copy custom files to llama.cpp directory
-    - name: Copy custom C-API files
+    - name: Copy custom files to llama.cpp directory
       shell: bash
       run: |
-        echo "Copying custom C-API files to llama.cpp directory..."
+        echo "Copying custom C-API and CMake files..."
         cp custom_files/newrllama_capi.h backend/llama.cpp/
         cp custom_files/newrllama_capi.cpp backend/llama.cpp/
+        # We overwrite the original CMakeLists.txt with our custom one
         cp custom_files/CMakeLists.txt.custom backend/llama.cpp/CMakeLists.txt
-        echo "Custom files copied successfully"
-        
+
     # Step 3: Configure and build the self-contained library.
-    - name: Configure and Build
+    - name: Configure and Build (Unix)
+      if: runner.os == 'Linux' || runner.os == 'macOS'
       shell: bash
       run: |
         cd backend/llama.cpp
         mkdir build && cd build
 
-        # Define base CMake arguments, forcing a static build.
-        CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF"
+        # Base CMake arguments for all Unix-like systems
+        CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON"
         
-        # --- PLATFORM-SPECIFIC FIXES ---
-        if [[ "${{ runner.os }}" == "Windows" ]]; then
-          # FIX for Windows: Use the correct environment variable for vcpkg.
-          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static"
-        
-        elif [[ "${{ matrix.os_name }}" == "macOS (Intel)" ]]; then
-          # FIX for Intel macOS: Enable Accelerate but disable Metal for better compatibility.
-          CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DLLAMA_METAL=OFF"
-
-        else # For Linux and Apple Silicon macOS
-          # Enable all hardware acceleration.
+        # FIX: Only enable Metal on macOS
+        if [[ "${{ runner.os }}" == "macOS" ]]; then
           CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DLLAMA_METAL=ON"
+        else # Linux
+          CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DLLAMA_METAL=OFF"
         fi
         
-        # Run CMake with the configured arguments.
         echo "Configuring with CMake: $CMAKE_ARGS"
         cmake .. $CMAKE_ARGS
         
-        # Run the build command for our custom 'newrllama' target.
         echo "Building target 'newrllama'..."
         cmake --build . --config Release --target newrllama -- -j 2
 
+    # --- BUILD STEP FOR WINDOWS ---
+    - name: Configure and Build (Windows)
+      if: runner.os == 'Windows'
+      # FIX: Use PowerShell for Windows to handle paths and variables correctly
+      shell: pwsh 
+      run: |
+        cd backend/llama.cpp
+        mkdir build; cd build
+        
+        # FIX: Explicitly set C++ standard and use correct env var for vcpkg
+        cmake .. -DCMAKE_BUILD_TYPE=Release `
+                 -DBUILD_SHARED_LIBS=OFF `
+                 -DCMAKE_CXX_STANDARD=17 `
+                 -DCMAKE_CXX_STANDARD_REQUIRED=ON `
+                 -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+                 -DVCPKG_TARGET_TRIPLET=x64-windows-static
+
+        echo "Building target 'newrllama'..."
+        cmake --build . --config Release --target newrllama
+        
     # Step 4: Prepare the artifact for release.
     # We create a clean zip file containing only the final library.
     - name: Package the artifact
