@@ -253,73 +253,63 @@ configure_file(cmake/llama.pc.in
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/llama.pc"
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 
-# --- Custom addition for newrllama4 R package (FINAL & EXPLICIT SOURCES) ---
+# --- Custom addition for newrllama4 R package (FINAL & ROBUST: force_load strategy) ---
 
-# FIX FOR LINUX: Globally enable Position Independent Code.
+# FIX FOR LINUX: Globally enable Position Independent Code for all targets.
+# This ensures that all generated static libraries (.a) are compatible with shared libraries.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# FIX FOR WINDOWS: Find the cURL library.
-if(WIN32)
-    find_package(CURL REQUIRED)
-endif()
-
-# CRITICAL FIX for ALL platforms: Explicitly list all required source files.
-# This is the most robust method to ensure a self-contained library.
-set(NEWRLLAMA_SOURCES
-    # Our own C-API implementation
+# 1. Define our own shared library target. It only needs our C-API file as a source.
+add_library(newrllama SHARED
     newrllama_capi.cpp
-
-    # Core llama sources
-    src/llama.cpp
-    src/llama-vocab.cpp
-    src/llama-grammar.cpp
-    src/llama-sampling.cpp
-    src/unicode.cpp
-    src/unicode-data.cpp
-
-    # Common utilities
-    common/common.cpp
-    common/log.cpp
-    common/sampling.cpp
-
-    # All essential ggml sources
-    ggml/src/ggml.c
-    ggml/src/ggml-alloc.c
-    ggml/src/ggml-backend.c
-    ggml/src/ggml-metal.m # This will be compiled conditionally on macOS
-    ggml/src/ggml-quants.c
-    ggml/src/ggml-rpc.c
-    ggml/src/ggml-sched.c
-    ggml/src/ggml-cuda.cu # This will be compiled conditionally if CUDA is enabled
-    ggml/src/ggml-sycl.cpp # and so on for other backends
-    ggml/src/gguf.c
-    ggml/src/ggml-common.h # Not a source, but good to remember its location
 )
 
-# Filter out sources that don't exist (like .cu files on non-CUDA systems)
-list(FILTER NEWRLLAMA_SOURCES INCLUDE REGEX ".*")
+# 2. Add dependencies. This is CRITICAL.
+#    It tells 'make'/'ninja' to build these targets BEFORE trying to build 'newrllama'.
+add_dependencies(newrllama llama common ggml)
 
-# Create our final shared library target from the explicit source list.
-add_library(newrllama SHARED ${NEWRLLAMA_SOURCES})
+# 3. Link against system libraries and frameworks.
+target_link_libraries(newrllama PRIVATE
+    ${ACCELERATE_LIBS} # For macOS Accelerate framework
+    ${METAL_LIBS}      # For macOS Metal framework
+)
 
-# Add all necessary include directories.
+# 4. The "Magic": Statically link the internal libraries into our shared library.
+#    This uses platform-specific linker flags.
+if(APPLE)
+    # For macOS, -force_load tells the linker to pull in ALL code from the static library.
+    target_link_options(newrllama PRIVATE
+        "-Wl,-force_load,$<TARGET_FILE:llama>"
+        "-Wl,-force_load,$<TARGET_FILE:common>"
+        "-Wl,-force_load,$<TARGET_FILE:ggml>"
+    )
+elseif(UNIX AND NOT APPLE)
+    # For Linux (GNU ld), --whole-archive does the same thing.
+    # We wrap the static libraries with these flags.
+    target_link_libraries(newrllama PRIVATE
+        "-Wl,--whole-archive"
+        llama
+        common
+        ggml
+        "-Wl,--no-whole-archive"
+    )
+elseif(WIN32)
+    # For Windows with MSVC, /WHOLEARCHIVE is the equivalent.
+    # Note: $<TARGET_FILE_NAME:...> gets just the file name, e.g., "llama.lib"
+    target_link_options(newrllama PRIVATE 
+        "/WHOLEARCHIVE:$<TARGET_FILE_NAME:llama>"
+        "/WHOLEARCHIVE:$<TARGET_FILE_NAME:common>"
+        "/WHOLEARCHIVE:$<TARGET_FILE_NAME:ggml>"
+    )
+endif()
+
+# 5. Add necessary include directories for our 'newrllama_capi.cpp'.
 target_include_directories(newrllama PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/common"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ggml/include"
 )
 
-# Link against required system frameworks and libraries.
-target_link_libraries(newrllama PRIVATE
-    ${ACCELERATE_LIBS}
-    ${METAL_LIBS}
-)
-if(WIN32)
-    target_link_libraries(newrllama PRIVATE CURL::libcurl)
-endif()
-
-# Set final properties for our library.
+# 6. Set final properties for our library.
 set_target_properties(newrllama PROPERTIES
     OUTPUT_NAME "newrllama"
     C_VISIBILITY_PRESET default

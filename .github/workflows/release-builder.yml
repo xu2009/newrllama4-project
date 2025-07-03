@@ -87,17 +87,13 @@ jobs:
         cd backend/llama.cpp
         mkdir build && cd build
 
-        # Base CMake arguments for all platforms
-        CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON"
+        # Base CMake arguments. CRITICAL: We force a STATIC build for all dependencies.
+        CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF"
         
-        # Platform-specific arguments
+        # On Windows, we still need to point to the vcpkg toolchain.
         if [[ "${{ runner.os }}" == "Windows" ]]; then
-          # FIX for Windows: Use the correct env var and quote the path
+          # FIX for Windows: Use the correct env var and quote the path.
           CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=\"${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake\" -DVCPKG_TARGET_TRIPLET=x64-windows-static"
-        elif [[ "${{ runner.os }}" == "macOS" ]]; then
-          CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DLLAMA_METAL=ON"
-        else # Linux
-          CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON"
         fi
         
         echo "Configuring with CMake: $CMAKE_ARGS"
