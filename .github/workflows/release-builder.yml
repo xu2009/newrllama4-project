@@ -80,22 +80,19 @@ jobs:
         # We overwrite the original CMakeLists.txt with our custom one
         cp custom_files/CMakeLists.txt.custom backend/llama.cpp/CMakeLists.txt
 
-    # Step 3: Configure and build the self-contained library.
-    - name: Configure and Build (Unix)
-      if: runner.os == 'Linux' || runner.os == 'macOS'
+    # Step 3: Configure and Build (Simplified)
+    - name: Configure and Build
       shell: bash
       run: |
         cd backend/llama.cpp
         mkdir build && cd build
 
-        # Base CMake arguments for all Unix-like systems
-        CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON"
+        # Base CMake arguments are now simpler.
+        CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release"
         
-        # FIX: Only enable Metal on macOS
-        if [[ "${{ runner.os }}" == "macOS" ]]; then
-          CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DLLAMA_METAL=ON"
-        else # Linux
-          CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DLLAMA_METAL=OFF"
+        # On Windows, we still need to point to the vcpkg toolchain.
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static"
         fi
         
         echo "Configuring with CMake: $CMAKE_ARGS"
@@ -103,26 +100,6 @@ jobs:
         
         echo "Building target 'newrllama'..."
         cmake --build . --config Release --target newrllama -- -j 2
-
-    # --- BUILD STEP FOR WINDOWS ---
-    - name: Configure and Build (Windows)
-      if: runner.os == 'Windows'
-      # FIX: Use PowerShell for Windows to handle paths and variables correctly
-      shell: pwsh 
-      run: |
-        cd backend/llama.cpp
-        mkdir build; cd build
-        
-        # FIX: Explicitly set C++ standard and use correct env var for vcpkg
-        cmake .. -DCMAKE_BUILD_TYPE=Release `
-                 -DBUILD_SHARED_LIBS=OFF `
-                 -DCMAKE_CXX_STANDARD=17 `
-                 -DCMAKE_CXX_STANDARD_REQUIRED=ON `
-                 -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
-                 -DVCPKG_TARGET_TRIPLET=x64-windows-static
-
-        echo "Building target 'newrllama'..."
-        cmake --build . --config Release --target newrllama
         
     # Step 4: Prepare the artifact for release.
     # We create a clean zip file containing only the final library.

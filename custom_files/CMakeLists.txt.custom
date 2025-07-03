@@ -253,73 +253,74 @@ configure_file(cmake/llama.pc.in
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/llama.pc"
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 
-# --- Custom addition for newrllama4 R package (FINAL & ROBUST) ---
-# This section defines a new target 'newrllama' which creates a 
-# self-contained shared library by statically linking all llama.cpp components.
+# --- Custom addition for newrllama4 R package (FINAL & FULLY ROBUST) ---
+# This version explicitly lists ALL required source files to build a single,
+# self-contained shared library, solving all platform-specific issues.
 
-# 1. Define our new shared library target. It only needs our C-API file as a source,
-#    because all other code will be linked in from the static libraries.
-add_library(newrllama SHARED
-    newrllama_capi.cpp
-)
+# FIX FOR LINUX: Globally enable Position Independent Code for all targets.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# 2. Crucial Step: Add dependencies.
-#    This tells 'make' that before building 'newrllama', it MUST first complete
-#    building the 'llama', 'common', and 'ggml' static library targets.
-#    This solves any build order issues.
-add_dependencies(newrllama llama common ggml)
-
-# 3. Link system libraries and frameworks.
-#    These are external dependencies that llama.cpp itself needs.
-target_link_libraries(newrllama
-    PRIVATE
-        # For Linux, you might need to find_package(CURL) and link CURL::libcurl
-        # For now, this is robust enough for macOS and can be adapted.
-        curl
-        ${ACCELERATE_LIBS}
-        ${METAL_LIBS}
-)
-
-# 4. The "Magic": Statically link the internal libraries into our shared library.
-#    This uses platform-specific linker flags to merge the .a files.
-if(APPLE)
-    # For macOS, -force_load tells the linker to pull in ALL code from the static library.
-    target_link_options(newrllama PRIVATE
-        "-Wl,-force_load,$<TARGET_FILE:llama>"
-        "-Wl,-force_load,$<TARGET_FILE:common>"
-        "-Wl,-force_load,$<TARGET_FILE:ggml>"
-    )
-elseif(UNIX AND NOT APPLE)
-    # For Linux, --whole-archive does the same thing.
-    target_link_libraries(newrllama PRIVATE
-        "-Wl,--whole-archive"
-        llama
-        common
-        ggml
-        "-Wl,--no-whole-archive"
-    )
-elseif(WIN32)
-    # For Windows with MSVC, /WHOLEARCHIVE is the equivalent.
-    target_link_options(newrllama PRIVATE 
-        "/WHOLEARCHIVE:$<TARGET_FILE_NAME:llama>"
-        # ... and for common, ggml
-    )
+# FIX FOR WINDOWS: Find the cURL library installed by vcpkg.
+if(WIN32)
+    find_package(CURL REQUIRED)
 endif()
 
-# 5. Add necessary include directories
-target_include_directories(newrllama PRIVATE
-    # For "llama.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    # For "common.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/common"
-    # For "ggml.h" and other ggml headers (CRITICAL FIX)
-    "${CMAKE_CURRENT_SOURCE_DIR}/ggml/include" 
+# Define a list of ALL source files needed from llama.cpp.
+# This is the most robust way to ensure all symbols are included.
+set(LLAMA_CPP_SOURCES
+    # Our own C-API implementation
+    newrllama_capi.cpp
+
+    # Core llama sources
+    src/llama.cpp
+    src/llama-vocab.cpp
+    src/llama-grammar.cpp
+    src/llama-sampling.cpp
+    src/unicode.cpp
+    src/unicode-data.cpp
+
+    # Common utilities
+    common/common.cpp
+    common/log.cpp
+    common/sampling.cpp
+
+    # All essential ggml sources (CRITICAL FIX for macOS)
+    ggml/src/ggml.c
+    ggml/src/ggml-alloc.c
+    ggml/src/ggml-backend.c
+    ggml/src/ggml-quants.c
+    ggml/src/ggml-threading.c
+    ggml/src/ggml-rpc.c
+    ggml/src/gguf.c
+    ggml/src/ggml-metal.m # This will only be compiled on macOS
+    # Add other backend sources if needed, e.g., ggml/src/ggml-cuda.cu
 )
 
-# 6. Set final properties for our library.
+# Create our final shared library target from the source list.
+add_library(newrllama SHARED ${LLAMA_CPP_SOURCES})
+
+# Add all necessary include directories.
+target_include_directories(newrllama PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/common"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ggml/include"
+)
+
+# Link against required system frameworks and libraries.
+target_link_libraries(newrllama PRIVATE
+    ${ACCELERATE_LIBS}
+    ${METAL_LIBS}
+)
+
+# FIX FOR WINDOWS: Link cURL only on Windows.
+if(WIN32)
+    target_link_libraries(newrllama PRIVATE CURL::libcurl)
+endif()
+
+# Set final properties for our library.
 set_target_properties(newrllama PROPERTIES
     OUTPUT_NAME "newrllama"
-    # This ensures symbols are visible for dynamic loading
     C_VISIBILITY_PRESET default
     CXX_VISIBILITY_PRESET default
 )
