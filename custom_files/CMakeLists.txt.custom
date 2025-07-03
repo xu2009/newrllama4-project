@@ -2,6 +2,15 @@ cmake_minimum_required(VERSION 3.14) # for add_link_options and implicit target 
 project("llama.cpp" C CXX)
 include(CheckIncludeFileCXX)
 
+# --- Custom addition for newrllama4 R package (FINAL & ROBUST v3) ---
+# CRITICAL FIX for Linux and C++ standard issues:
+# Set these globally BEFORE any targets or subdirectories are added.
+# This ensures all compiled code (including from sub-projects) uses these settings.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON) # Solves the -fPIC error on Linux.
+set(CMAKE_CXX_STANDARD 17)              # Solves the C++11/17 syntax errors on macOS.
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# --- End of critical global settings ---
+
 #set(CMAKE_WARN_DEPRECATED YES)
 set(CMAKE_WARN_UNUSED_CLI YES)
 
@@ -253,11 +262,10 @@ configure_file(cmake/llama.pc.in
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/llama.pc"
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 
-# --- Custom addition for newrllama4 R package (FINAL & ROBUST v2) ---
+# --- Custom library definition (rest of v3 logic) ---
 
-# FIX FOR LINUX: Force Position Independent Code (fPIC) for all targets globally.
-# This must be set before any targets are defined.
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+# Find the cURL library, needed for some llama.cpp features.
+find_package(CURL REQUIRED)
 
 # 1. Define our own shared library target.
 add_library(newrllama SHARED
@@ -269,26 +277,23 @@ add_dependencies(newrllama llama common ggml)
 
 # 3. Link system libraries and frameworks.
 target_link_libraries(newrllama PRIVATE
+    CURL::libcurl      # Use CMake's official way to link curl
     ${ACCELERATE_LIBS}
     ${METAL_LIBS}
 )
-# Note: We will handle curl linking in the platform-specific section below.
 
-# 4. The "Magic": Statically link the internal libraries.
+# 4. Statically link the internal libraries using platform-specific flags.
 if(APPLE)
-    # macOS linker flags
     target_link_options(newrllama PRIVATE
         "-Wl,-force_load,$<TARGET_FILE:llama>"
         "-Wl,-force_load,$<TARGET_FILE:common>"
         "-Wl,-force_load,$<TARGET_FILE:ggml>"
     )
 elseif(UNIX AND NOT APPLE)
-    # Linux linker flags
     target_link_libraries(newrllama PRIVATE
         "-Wl,--whole-archive" llama common ggml "-Wl,--no-whole-archive"
     )
 elseif(WIN32)
-    # Windows linker flags
     target_link_options(newrllama PRIVATE 
         "/WHOLEARCHIVE:$<TARGET_FILE_NAME:llama>"
         "/WHOLEARCHIVE:$<TARGET_FILE_NAME:common>"
@@ -296,11 +301,10 @@ elseif(WIN32)
     )
 endif()
 
-# 5. Add necessary include directories. (CRITICAL FIX FOR MACOS)
+# 5. Add necessary include directories for 'newrllama_capi.cpp'.
 target_include_directories(newrllama PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/common"
-    # This was the missing piece for macOS!
     "${CMAKE_CURRENT_SOURCE_DIR}/ggml/include"
 )
 

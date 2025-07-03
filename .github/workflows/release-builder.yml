@@ -74,11 +74,12 @@ jobs:
         cd backend/llama.cpp
         mkdir build && cd build
 
+        # Base CMake arguments
         CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF"
         
+        # Platform-specific arguments
         if [[ "${{ runner.os }}" == "Windows" ]]; then
-          # Use the VCPKG_ROOT we just set
-          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static"
+          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=\"$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake\" -DVCPKG_TARGET_TRIPLET=x64-windows-static"
         elif [[ "${{ runner.os }}" == "macOS" ]]; then
           CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DLLAMA_METAL=ON"
         else # Linux
@@ -89,7 +90,12 @@ jobs:
         cmake .. $CMAKE_ARGS
         
         echo "Building target 'newrllama'..."
-        cmake --build . --config Release --target newrllama -- -j 2
+        # CRITICAL FIX for Windows: Use /m for MSBuild, -j for make/ninja
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          cmake --build . --config Release --target newrllama -- /m:2
+        else
+          cmake --build . --config Release --target newrllama -- -j 2
+        fi
         
     # --- Package and Upload ---
     - name: Package the artifact
