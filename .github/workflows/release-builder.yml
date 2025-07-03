@@ -1,27 +1,15 @@
-# --- FILE: .github/workflows/release-builder.yml (FINAL & ROBUST VERSION) ---
-# This workflow automates the cross-platform compilation of the self-contained
-# 'libnewrllama' dynamic library and attaches it to a GitHub Release.
-
+# --- FILE: .github/workflows/release-builder.yml (FINAL VERSION with Copilot's Fix) ---
 name: Build and Release Pre-compiled Libraries
-
-# This workflow is triggered whenever a new Release is 'published' on GitHub.
-# It will not run on drafts or pre-releases.
 on:
   release:
     types: [published]
 
 jobs:
-  # The main build job, which runs for each platform defined in the matrix.
   build:
-    # A user-friendly name for the job, e.g., "Build for Linux (x64)"
     name: Build for ${{ matrix.os_name }}
-
-    # The "matrix" strategy creates parallel jobs for each combination of settings.
     strategy:
-      # We set fail-fast to false, so if one platform fails, the others will continue.
       fail-fast: false
       matrix:
-        # Define our target platforms.
         include:
           - os: ubuntu-latest
             os_name: Linux
@@ -40,60 +28,61 @@ jobs:
             artifact_name: libnewrllama_macos_arm64.zip
             lib_name: libnewrllama.dylib
 
-    # Specify the virtual machine environment for the job.
     runs-on: ${{ matrix.os }}
 
     steps:
-    # Step 1: Check out your repository's code.
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        # This is crucial for pulling in the llama.cpp source code.
         submodules: 'recursive'
 
-    # Step 2: Install platform-specific build dependencies.
+    # --- Platform-specific dependency installation ---
     - name: Install dependencies (Linux)
       if: runner.os == 'Linux'
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential cmake curl libcurl4-openssl-dev
 
-    - name: Install dependencies (Windows)
+    # COPILOT'S FIX for Windows dependencies - This is much more robust
+    - name: Set up vcpkg and install dependencies (Windows)
       if: runner.os == 'Windows'
-      # vcpkg is a C++ package manager that simplifies getting dependencies on Windows.
-      # We use it to get 'curl'.
-      run: vcpkg install curl:x64-windows-static
-
-    # macOS and Windows runners usually have CMake and compilers pre-installed.
-    - name: Echo environment details
+      shell: bash
       run: |
-        echo "Running on ${{ runner.os }}"
-        cmake --version
+        echo "##[group]Setting up vcpkg..."
+        git clone https://github.com/microsoft/vcpkg.git
+        ./vcpkg/bootstrap-vcpkg.bat
+        # Set the official VCPKG_ROOT env var for subsequent steps in this job
+        echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
+        echo "##[endgroup]"
+        echo "##[group]Installing curl via vcpkg..."
+        ./vcpkg/vcpkg install curl:x64-windows-static
+        echo "##[endgroup]"
 
-    # Step 2.5: Copy custom files to llama.cpp directory
+    # --- Inject our custom files ---
     - name: Copy custom files to llama.cpp directory
       shell: bash
       run: |
         echo "Copying custom C-API and CMake files..."
         cp custom_files/newrllama_capi.h backend/llama.cpp/
         cp custom_files/newrllama_capi.cpp backend/llama.cpp/
-        # We overwrite the original CMakeLists.txt with our custom one
         cp custom_files/CMakeLists.txt.custom backend/llama.cpp/CMakeLists.txt
 
-    # Step 3: Configure and Build
+    # --- Configure and Build ---
     - name: Configure and Build
       shell: bash
       run: |
         cd backend/llama.cpp
         mkdir build && cd build
 
-        # Base CMake arguments. CRITICAL: We force a STATIC build for all dependencies.
         CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF"
         
-        # On Windows, we still need to point to the vcpkg toolchain.
         if [[ "${{ runner.os }}" == "Windows" ]]; then
-          # FIX for Windows: Use the correct env var and quote the path.
-          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=\"${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake\" -DVCPKG_TARGET_TRIPLET=x64-windows-static"
+          # Use the VCPKG_ROOT we just set
+          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static"
+        elif [[ "${{ runner.os }}" == "macOS" ]]; then
+          CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DLLAMA_METAL=ON"
+        else # Linux
+          CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON"
         fi
         
         echo "Configuring with CMake: $CMAKE_ARGS"
@@ -102,8 +91,7 @@ jobs:
         echo "Building target 'newrllama'..."
         cmake --build . --config Release --target newrllama -- -j 2
         
-    # Step 4: Prepare the artifact for release.
-    # We create a clean zip file containing only the final library.
+    # --- Package and Upload ---
     - name: Package the artifact
       shell: bash
       run: |
@@ -127,19 +115,12 @@ jobs:
         zip -r ../${{ matrix.artifact_name }} .
         cd ..
 
-    # Step 5: Upload the final zip file to the GitHub Release.
-    # This uses a pre-made action to handle the upload securely.
     - name: Upload Artifact to Release
       uses: actions/upload-release-asset@v1
       env:
-        # The GITHUB_TOKEN is automatically provided by GitHub Actions.
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        # The URL to upload to is automatically found from the 'release' event.
         upload_url: ${{ github.event.release.upload_url }}
-        # Path to the zip file we just created.
         asset_path: ./${{ matrix.artifact_name }}
-        # The name the file will have on the release page.
         asset_name: ${{ matrix.artifact_name }}
-        # The content type of the file.
-        asset_content_type: application/zip 
+        asset_content_type: application/zip

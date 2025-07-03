@@ -253,49 +253,42 @@ configure_file(cmake/llama.pc.in
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/llama.pc"
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 
-# --- Custom addition for newrllama4 R package (FINAL & ROBUST: force_load strategy) ---
+# --- Custom addition for newrllama4 R package (FINAL & ROBUST v2) ---
 
-# FIX FOR LINUX: Globally enable Position Independent Code for all targets.
-# This ensures that all generated static libraries (.a) are compatible with shared libraries.
+# FIX FOR LINUX: Force Position Independent Code (fPIC) for all targets globally.
+# This must be set before any targets are defined.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# 1. Define our own shared library target. It only needs our C-API file as a source.
+# 1. Define our own shared library target.
 add_library(newrllama SHARED
     newrllama_capi.cpp
 )
 
-# 2. Add dependencies. This is CRITICAL.
-#    It tells 'make'/'ninja' to build these targets BEFORE trying to build 'newrllama'.
+# 2. Add dependencies to ensure correct build order.
 add_dependencies(newrllama llama common ggml)
 
-# 3. Link against system libraries and frameworks.
+# 3. Link system libraries and frameworks.
 target_link_libraries(newrllama PRIVATE
-    ${ACCELERATE_LIBS} # For macOS Accelerate framework
-    ${METAL_LIBS}      # For macOS Metal framework
+    ${ACCELERATE_LIBS}
+    ${METAL_LIBS}
 )
+# Note: We will handle curl linking in the platform-specific section below.
 
-# 4. The "Magic": Statically link the internal libraries into our shared library.
-#    This uses platform-specific linker flags.
+# 4. The "Magic": Statically link the internal libraries.
 if(APPLE)
-    # For macOS, -force_load tells the linker to pull in ALL code from the static library.
+    # macOS linker flags
     target_link_options(newrllama PRIVATE
         "-Wl,-force_load,$<TARGET_FILE:llama>"
         "-Wl,-force_load,$<TARGET_FILE:common>"
         "-Wl,-force_load,$<TARGET_FILE:ggml>"
     )
 elseif(UNIX AND NOT APPLE)
-    # For Linux (GNU ld), --whole-archive does the same thing.
-    # We wrap the static libraries with these flags.
+    # Linux linker flags
     target_link_libraries(newrllama PRIVATE
-        "-Wl,--whole-archive"
-        llama
-        common
-        ggml
-        "-Wl,--no-whole-archive"
+        "-Wl,--whole-archive" llama common ggml "-Wl,--no-whole-archive"
     )
 elseif(WIN32)
-    # For Windows with MSVC, /WHOLEARCHIVE is the equivalent.
-    # Note: $<TARGET_FILE_NAME:...> gets just the file name, e.g., "llama.lib"
+    # Windows linker flags
     target_link_options(newrllama PRIVATE 
         "/WHOLEARCHIVE:$<TARGET_FILE_NAME:llama>"
         "/WHOLEARCHIVE:$<TARGET_FILE_NAME:common>"
@@ -303,10 +296,12 @@ elseif(WIN32)
     )
 endif()
 
-# 5. Add necessary include directories for our 'newrllama_capi.cpp'.
+# 5. Add necessary include directories. (CRITICAL FIX FOR MACOS)
 target_include_directories(newrllama PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/common"
+    # This was the missing piece for macOS!
+    "${CMAKE_CURRENT_SOURCE_DIR}/ggml/include"
 )
 
 # 6. Set final properties for our library.
