@@ -94,7 +94,14 @@ jobs:
           VCPKG_CMAKE_PATH=$(echo "$VCPKG_ROOT" | sed 's|\\|/|g')/scripts/buildsystems/vcpkg.cmake
           CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=\"$VCPKG_CMAKE_PATH\" -DVCPKG_TARGET_TRIPLET=x64-windows-static"
         elif [[ "${{ runner.os }}" == "macOS" ]]; then
-          CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DLLAMA_METAL=ON"
+          # Enable Metal GPU acceleration only for Apple Silicon (macos-14)
+          if [[ "${{ matrix.os }}" == "macos-14" ]]; then
+            CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DGGML_METAL=ON"
+            echo "🚀 Enabling Metal GPU acceleration for Apple Silicon"
+          else
+            CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON"
+            echo "💻 Using CPU acceleration for Intel Mac (Metal disabled)"
+          fi
         else # Linux
           CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON"
         fi
