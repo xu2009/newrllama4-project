@@ -274,6 +274,9 @@ add_library(newrllama SHARED
     ggml/src/ggml.c
     ggml/src/gguf.cpp
     ggml/src/ggml-quants.c
+    ggml/src/ggml-opt.cpp
+    ggml/src/ggml-alloc.c
+    ggml/src/ggml-backend.cpp
 )
 
 # 2. Add dependencies to ensure correct build order.
