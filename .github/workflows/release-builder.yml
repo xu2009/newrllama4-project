@@ -96,8 +96,8 @@ jobs:
         elif [[ "${{ runner.os }}" == "macOS" ]]; then
           # Enable Metal GPU acceleration only for Apple Silicon (macos-14)
           if [[ "${{ matrix.os }}" == "macos-14" ]]; then
-            CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DGGML_METAL=ON"
-            echo "🚀 Enabling Metal GPU acceleration for Apple Silicon"
+            CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON"
+            echo "🚀 Enabling Metal GPU acceleration for Apple Silicon (with embedded library)"
           else
             CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON"
             echo "💻 Using CPU acceleration for Intel Mac (Metal disabled)"
@@ -107,6 +107,9 @@ jobs:
         fi
         
         echo "Configuring with CMake: $CMAKE_ARGS"
+        # Set a writable runtime output directory to fix Metal file copy issues
+        CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${PWD}/bin"
+        mkdir -p bin
         cmake .. $CMAKE_ARGS
         
         echo "Building target 'newrllama'..."
