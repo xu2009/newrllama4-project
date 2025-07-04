@@ -273,6 +273,7 @@ add_library(newrllama SHARED
     newrllama_capi.cpp
     ggml/src/ggml.c
     ggml/src/gguf.cpp
+    ggml/src/ggml-quants.c
 )
 
 # 2. Add dependencies to ensure correct build order.
