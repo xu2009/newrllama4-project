@@ -284,60 +284,17 @@ else()
 endif()
 
 # 1. Define our own shared library target.
-#    CRITICAL FIX: Remove sources that are already in static libraries to avoid duplication
+#    SIMPLIFIED APPROACH: Only include our C-API and rely on static library linking
 add_library(newrllama SHARED
     newrllama_capi.cpp
-    # Core GGML sources - only include what's absolutely necessary
-    ggml/src/ggml.c
-    ggml/src/gguf.cpp
-    ggml/src/ggml-quants.c
-    ggml/src/ggml-opt.cpp
-    ggml/src/ggml-alloc.c
-    ggml/src/ggml-backend.cpp
-    ggml/src/ggml-threading.cpp
-    # NOTE: Removed ggml-backend-reg.cpp to avoid duplication with static libraries
-    ggml/src/ggml-cpu/ggml-cpu.cpp
-    ggml/src/ggml-cpu/ggml-cpu.c    # Required for ggml_cpu_has_* feature detection functions
+    # Only include minimal essential sources that aren't in static libraries
 )
 
-# Add platform-specific backend sources only if available
+# Add platform-specific backend sources only if they're not in static libraries
 if(APPLE)
-    # Only add BLAS backend if Accelerate framework is available
-    if(BLAS_AVAILABLE)
-        target_sources(newrllama PRIVATE ggml/src/ggml-blas/ggml-blas.cpp)
-        # CRITICAL: Set the correct preprocessor define to use Accelerate instead of cblas.h
-        target_compile_definitions(newrllama PRIVATE 
-            GGML_USE_ACCELERATE
-            GGML_BLAS_USE_ACCELERATE  # This makes ggml-blas.cpp use <Accelerate/Accelerate.h>
-            ACCELERATE_NEW_LAPACK     # Use new LAPACK interface to suppress deprecation warnings
-        )
-        message(STATUS "Adding BLAS backend source with Accelerate framework")
-    else()
-        message(STATUS "Skipping BLAS backend - Accelerate framework not available")
-    endif()
-    
-    # Always try to add Metal backend on macOS
-    target_sources(newrllama PRIVATE ggml/src/ggml-metal/ggml-metal.m)
-    
-    # Link required Apple frameworks
-    if(ACCELERATE_FRAMEWORK)
-        target_link_libraries(newrllama PRIVATE ${ACCELERATE_FRAMEWORK})
-    endif()
-    
-    # Find and link Metal framework
-    find_library(METAL_FRAMEWORK Metal)
-    find_library(METALKIT_FRAMEWORK MetalKit)
-    find_library(FOUNDATION_FRAMEWORK Foundation)  # Required for NSFileType, NSArray, etc.
-    
-    if(METAL_FRAMEWORK AND METALKIT_FRAMEWORK)
-        target_link_libraries(newrllama PRIVATE ${METAL_FRAMEWORK} ${METALKIT_FRAMEWORK})
-        target_compile_definitions(newrllama PRIVATE GGML_USE_METAL)
-    endif()
-    
-    # Link Foundation framework for basic macOS/iOS types
-    if(FOUNDATION_FRAMEWORK)
-        target_link_libraries(newrllama PRIVATE ${FOUNDATION_FRAMEWORK})
-    endif()
+    # Check if we need to add any platform-specific sources
+    # For now, rely entirely on static library linking
+    message(STATUS "Using static library linking for all GGML functionality on macOS")
 endif()
 
 # 2. Add dependencies to ensure correct build order.
@@ -351,6 +308,35 @@ target_link_libraries(newrllama PRIVATE
 # 3.1. Link essential system libraries for all platforms
 if(UNIX)
     target_link_libraries(newrllama PRIVATE m pthread)  # math and threading libraries
+endif()
+
+# 3.2. Link Apple frameworks if on macOS
+if(APPLE)
+    # Link required Apple frameworks
+    if(ACCELERATE_FRAMEWORK)
+        target_link_libraries(newrllama PRIVATE ${ACCELERATE_FRAMEWORK})
+        # Set BLAS-related compile definitions
+        target_compile_definitions(newrllama PRIVATE 
+            GGML_USE_ACCELERATE
+            GGML_BLAS_USE_ACCELERATE
+            ACCELERATE_NEW_LAPACK
+        )
+    endif()
+    
+    # Find and link Metal framework
+    find_library(METAL_FRAMEWORK Metal)
+    find_library(METALKIT_FRAMEWORK MetalKit)
+    find_library(FOUNDATION_FRAMEWORK Foundation)
+    
+    if(METAL_FRAMEWORK AND METALKIT_FRAMEWORK)
+        target_link_libraries(newrllama PRIVATE ${METAL_FRAMEWORK} ${METALKIT_FRAMEWORK})
+        target_compile_definitions(newrllama PRIVATE GGML_USE_METAL)
+    endif()
+    
+    # Link Foundation framework for basic macOS/iOS types
+    if(FOUNDATION_FRAMEWORK)
+        target_link_libraries(newrllama PRIVATE ${FOUNDATION_FRAMEWORK})
+    endif()
 endif()
 
 # 4. Statically link the internal libraries using platform-specific flags.
