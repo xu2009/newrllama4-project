@@ -2,51 +2,52 @@ cmake_minimum_required(VERSION 3.14) # for add_link_options and implicit target 
 project("llama.cpp" C CXX)
 include(CheckIncludeFileCXX)
 
-# --- Custom addition for newrllama4 R package (FINAL & ROBUST v3) ---
-# CRITICAL FIX for Linux and C++ standard issues:
-# Set these globally BEFORE any targets or subdirectories are added.
-# This ensures all compiled code (including from sub-projects) uses these settings.
+# --- Critical global settings for cross-platform compatibility ---
 set(CMAKE_POSITION_INDEPENDENT_CODE ON) # Solves the -fPIC error on Linux.
 set(CMAKE_CXX_STANDARD 17)              # Solves the C++11/17 syntax errors on macOS.
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-# --- End of critical global settings ---
 
-# PLAN A+: Simplified build configuration for reliable cross-platform compilation
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# GLUE-CODE ARCHITECTURE: Force complete static library builds
+# Key insight: Make static libraries contain ALL symbols before we link them
+set(GGML_STATIC ON CACHE BOOL "Force GGML static library with complete symbols" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force all libraries to be static for complete symbol inclusion" FORCE)
 
-# Basic llama.cpp build settings (simplified from Plan B)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries for linking" FORCE)
-set(LLAMA_BUILD_COMMON ON CACHE BOOL "Build common utils" FORCE)
-set(LLAMA_BUILD_TESTS OFF CACHE BOOL "Disable tests for speed" FORCE)
-set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "Disable tools for speed" FORCE)
-set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "Disable examples for speed" FORCE)
-set(LLAMA_BUILD_SERVER OFF CACHE BOOL "Disable server for speed" FORCE)
+# Essential build configuration for symbol completeness
+set(LLAMA_BUILD_COMMON ON CACHE BOOL "Build common utils (needed for complete linking)" FORCE)
+set(LLAMA_BUILD_TESTS OFF CACHE BOOL "Disable tests for clean build" FORCE)
+set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "Disable tools for clean build" FORCE)
+set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "Disable examples for clean build" FORCE)
+set(LLAMA_BUILD_SERVER OFF CACHE BOOL "Disable server for clean build" FORCE)
 
-# Platform-specific optimizations (minimal)
+# Platform-specific backend configuration (ensure symbols are included)
 if(APPLE)
     set(GGML_ACCELERATE ON CACHE BOOL "Enable Accelerate framework" FORCE)
     set(GGML_METAL OFF CACHE BOOL "Disable Metal to avoid CI file system issues" FORCE)
     set(GGML_BLAS ON CACHE BOOL "Enable BLAS support" FORCE)
+    set(GGML_BLAS_USE_ACCELERATE ON CACHE BOOL "Use Accelerate for BLAS" FORCE)
 endif()
 
 # Disable problematic features for clean builds
-set(LLAMA_CURL OFF CACHE BOOL "Disable curl dependency" FORCE)
+set(LLAMA_CURL OFF CACHE BOOL "Disable curl dependency for simplicity" FORCE)
 set(GGML_ALL_WARNINGS OFF CACHE BOOL "Disable warnings for clean build" FORCE)
 
-# PLAN B: Use simplified configuration for reliable builds
+# Include original llama.cpp build logic (we ARE the CMakeLists.txt now)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/build-info.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/common.cmake)
 
-# --- Custom library definition (rest of v3 logic) ---
+# Add subdirectories to build complete static libraries
+add_subdirectory(ggml)
+add_subdirectory(src)
+if (LLAMA_BUILD_COMMON)
+    add_subdirectory(common)
+endif()
 
-# Find the cURL library, needed for some llama.cpp features.
+# Find required system libraries
 find_package(CURL REQUIRED)
 
-# Check for BLAS availability on macOS - use Accelerate framework properly
+# Check for BLAS availability on macOS
 if(APPLE)
-    # Find Accelerate framework which includes BLAS/CBLAS
     find_library(ACCELERATE_FRAMEWORK Accelerate)
-    
     if(ACCELERATE_FRAMEWORK)
         message(STATUS "Found Accelerate framework - enabling BLAS support with Accelerate")
         set(BLAS_AVAILABLE TRUE)
@@ -58,60 +59,14 @@ else()
     set(BLAS_AVAILABLE FALSE)
 endif()
 
-# 1. Define our own shared library target.
-#    PLAN A+: Minimal targeted source inclusion for missing symbols
-add_library(newrllama SHARED
-    newrllama_capi.cpp
-    # ESSENTIAL MISSING SYMBOLS: Add only the specific files containing missing functions
-    ggml/src/gguf.cpp        # For gguf_type_name, gguf_write_to_file 
-    ggml/src/ggml.c          # For ggml_view_1d/2d/3d/4d and core tensor operations
-)
+# === GLUE-CODE ARCHITECTURE: Pure static library linking ===
+# Only write "glue code" - don't manually list .c/.cpp files
+add_library(newrllama SHARED newrllama_capi.cpp)
 
-# Add platform-specific backend sources only if they're not in static libraries
-if(APPLE)
-    # Check if we need to add any platform-specific sources
-    # For now, rely entirely on static library linking
-    message(STATUS "Using static library linking for all GGML functionality on macOS")
-endif()
-
-# 2. Add dependencies to ensure correct build order.
+# Ensure build order: static libraries must be built before our target
 add_dependencies(newrllama llama common ggml)
 
-# 3. Link system libraries and frameworks.
-target_link_libraries(newrllama PRIVATE
-    CURL::libcurl      # Use CMake's official way to link curl
-)
-
-# 3.1. Link essential system libraries for all platforms
-if(UNIX)
-    target_link_libraries(newrllama PRIVATE m pthread)  # math and threading libraries
-endif()
-
-# 3.2. Link Apple frameworks if on macOS
-if(APPLE)
-    # Link required Apple frameworks
-    if(ACCELERATE_FRAMEWORK)
-        target_link_libraries(newrllama PRIVATE ${ACCELERATE_FRAMEWORK})
-        # Set BLAS-related compile definitions
-        target_compile_definitions(newrllama PRIVATE 
-            GGML_USE_ACCELERATE
-            GGML_BLAS_USE_ACCELERATE
-            ACCELERATE_NEW_LAPACK
-        )
-    endif()
-    
-    # Metal disabled due to CI file system permission issues
-    # find_library(METAL_FRAMEWORK Metal)
-    # find_library(METALKIT_FRAMEWORK MetalKit)
-    
-    # Link Foundation framework for basic macOS/iOS types
-    find_library(FOUNDATION_FRAMEWORK Foundation)
-    if(FOUNDATION_FRAMEWORK)
-        target_link_libraries(newrllama PRIVATE ${FOUNDATION_FRAMEWORK})
-    endif()
-endif()
-
-# 4. Statically link the internal libraries using platform-specific flags.
+# Link static libraries with complete symbol inclusion using platform-specific whole-archive
 if(APPLE)
     target_link_options(newrllama PRIVATE
         "-Wl,-force_load,$<TARGET_FILE:llama>"
@@ -124,41 +79,50 @@ elseif(UNIX AND NOT APPLE)
     )
 elseif(WIN32)
     target_link_options(newrllama PRIVATE 
-        "/WHOLEARCHIVE:$<TARGET_FILE_NAME:llama>"
-        "/WHOLEARCHIVE:$<TARGET_FILE_NAME:common>"
-        "/WHOLEARCHIVE:$<TARGET_FILE_NAME:ggml>"
+        "/WHOLEARCHIVE:$<TARGET_FILE:llama>"
+        "/WHOLEARCHIVE:$<TARGET_FILE:common>"
+        "/WHOLEARCHIVE:$<TARGET_FILE:ggml>"
     )
 endif()
 
-# 5. Add necessary include directories for 'newrllama_capi.cpp'.
+# Link system libraries and frameworks
+target_link_libraries(newrllama PRIVATE CURL::libcurl)
+
+# Link essential system libraries for all platforms
+if(UNIX)
+    target_link_libraries(newrllama PRIVATE m pthread)
+endif()
+
+# Link Apple frameworks if on macOS
+if(APPLE)
+    if(ACCELERATE_FRAMEWORK)
+        target_link_libraries(newrllama PRIVATE ${ACCELERATE_FRAMEWORK})
+        target_compile_definitions(newrllama PRIVATE 
+            GGML_USE_ACCELERATE
+            GGML_BLAS_USE_ACCELERATE
+            ACCELERATE_NEW_LAPACK
+        )
+    endif()
+    
+    # Link Foundation framework for basic macOS/iOS types
+    find_library(FOUNDATION_FRAMEWORK Foundation)
+    if(FOUNDATION_FRAMEWORK)
+        target_link_libraries(newrllama PRIVATE ${FOUNDATION_FRAMEWORK})
+    endif()
+endif()
+
+# Add necessary include directories
 target_include_directories(newrllama PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/common"
     "${CMAKE_CURRENT_SOURCE_DIR}/ggml/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ggml/src"        # For ggml-impl.h
-    "${CMAKE_CURRENT_SOURCE_DIR}/ggml/src/ggml-cpu"  # For ggml-cpu-impl.h
+    "${CMAKE_CURRENT_SOURCE_DIR}/ggml/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ggml/src/ggml-cpu"
 )
 
-# 6. Set final properties for our library.
+# Set final properties for our library
 set_target_properties(newrllama PROPERTIES
     OUTPUT_NAME "newrllama"
     C_VISIBILITY_PRESET default
     CXX_VISIBILITY_PRESET default
 )
-
-# PLAN A+: Clean, minimal configuration
-
-# Include original llama.cpp build logic (we ARE the CMakeLists.txt now)
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/build-info.cmake)
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/common.cmake)
-
-# Add ggml subdirectory
-add_subdirectory(ggml)
-
-# Add llama src subdirectory  
-add_subdirectory(src)
-
-# Add common subdirectory
-if (LLAMA_BUILD_COMMON)
-    add_subdirectory(common)
-endif()

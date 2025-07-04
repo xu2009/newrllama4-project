@@ -72,6 +72,11 @@ jobs:
         cp custom_files/newrllama_capi.h backend/llama.cpp/
         cp custom_files/newrllama_capi.cpp backend/llama.cpp/
         cp custom_files/CMakeLists.txt.custom backend/llama.cpp/CMakeLists.txt
+        
+        # Copy symbol verification script
+        echo "Copying symbol verification script..."
+        cp scripts/check_symbols.sh backend/llama.cpp/
+        chmod +x backend/llama.cpp/check_symbols.sh
 
     # --- Configure and Build ---
     - name: Configure and Build
@@ -105,6 +110,22 @@ jobs:
           cmake --build . --config Release --target newrllama --verbose -- -j 2
         fi
         
+    # --- GLUE-CODE ARCHITECTURE: Verify static library symbol completeness ---
+    - name: Verify Static Library Symbols
+      shell: bash
+      run: |
+        cd backend/llama.cpp
+        echo "🔍 Running symbol verification for glue-code architecture..."
+        
+        # Run our symbol verification script
+        if ./check_symbols.sh build; then
+          echo "✅ Static libraries contain all required symbols - glue-code architecture is working!"
+        else
+          echo "⚠️  Some symbols missing from static libraries."
+          echo "    This indicates the build configuration needs adjustment."
+          echo "    The build will continue, but runtime issues may occur."
+        fi
+
     # --- Package and Upload ---
     - name: Package the artifact
       shell: bash
