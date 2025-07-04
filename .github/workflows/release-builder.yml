@@ -60,8 +60,8 @@ jobs:
         echo "VCPKG_ROOT=$GITHUB_WORKSPACE/vcpkg" >> $GITHUB_ENV
         echo "##[endgroup]"
         echo "##[group]Installing curl via vcpkg..."
-        # Use the VCPKG_ROOT we just defined to call vcpkg.
-        $VCPKG_ROOT/vcpkg install curl:x64-windows-static
+        # CRITICAL FIX: Use .exe extension for Windows
+        $VCPKG_ROOT/vcpkg.exe install curl:x64-windows-static
         echo "##[endgroup]"
 
     # --- Inject our custom files ---
