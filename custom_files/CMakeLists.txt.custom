@@ -24,7 +24,7 @@ set(LLAMA_BUILD_SERVER OFF CACHE BOOL "Disable server for clean build" FORCE)
 # Platform-specific backend configuration (ensure symbols are included)
 if(APPLE)
     set(GGML_ACCELERATE ON CACHE BOOL "Enable Accelerate framework" FORCE)
-    set(GGML_METAL OFF CACHE BOOL "Disable Metal to avoid CI file system issues" FORCE)
+    set(GGML_METAL ON CACHE BOOL "Enable Metal GPU acceleration" FORCE)
     set(GGML_BLAS ON CACHE BOOL "Enable BLAS support" FORCE)
     set(GGML_BLAS_USE_ACCELERATE ON CACHE BOOL "Use Accelerate for BLAS" FORCE)
 endif()
@@ -186,6 +186,17 @@ if(APPLE)
             GGML_BLAS_USE_ACCELERATE
             ACCELERATE_NEW_LAPACK
         )
+    endif()
+    
+    # Link Metal framework for GPU acceleration
+    find_library(METAL_FRAMEWORK Metal)
+    find_library(METALKIT_FRAMEWORK MetalKit)
+    if(METAL_FRAMEWORK AND METALKIT_FRAMEWORK)
+        target_link_libraries(newrllama PRIVATE ${METAL_FRAMEWORK} ${METALKIT_FRAMEWORK})
+        target_compile_definitions(newrllama PRIVATE GGML_USE_METAL)
+        message(STATUS "Found Metal framework - enabling Metal GPU acceleration")
+    else()
+        message(STATUS "Metal framework not found - disabling Metal backend")
     endif()
     
     # Link Foundation framework for basic macOS/iOS types
