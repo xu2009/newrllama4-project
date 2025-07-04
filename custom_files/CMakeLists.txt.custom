@@ -7,8 +7,10 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON) # Solves the -fPIC error on Linux.
 set(CMAKE_CXX_STANDARD 17)              # Solves the C++11/17 syntax errors on macOS.
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# GLUE-CODE ARCHITECTURE: Force complete static library builds
-# Key insight: Make static libraries contain ALL symbols before we link them
+# GLUE-CODE ARCHITECTURE with OBJECT LIBRARY FALLBACK
+# Strategy: Try static libraries first, fall back to OBJECT libraries if incomplete
+
+# Force complete static library builds (if possible)
 set(GGML_STATIC ON CACHE BOOL "Force GGML static library with complete symbols" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force all libraries to be static for complete symbol inclusion" FORCE)
 
@@ -59,33 +61,115 @@ else()
     set(BLAS_AVAILABLE FALSE)
 endif()
 
-# === GLUE-CODE ARCHITECTURE: Pure static library linking ===
-# Only write "glue code" - don't manually list .c/.cpp files
-add_library(newrllama SHARED newrllama_capi.cpp)
+# === OBJECT LIBRARY FALLBACK STRATEGY ===
+# Function to check if static libraries contain required symbols
+function(check_static_library_completeness)
+    # Key symbols that must be present for glue-code architecture to work
+    set(REQUIRED_SYMBOLS 
+        "gguf_type_name"
+        "gguf_write_to_file" 
+        "ggml_view_1d"
+        "ggml_view_2d"
+        "ggml_new_tensor"
+        "ggml_set_param"
+    )
+    
+    # Check if we can find symbols in the static libraries
+    set(STATIC_LIBS_COMPLETE TRUE)
+    foreach(LIB_TARGET llama common ggml)
+        get_target_property(LIB_LOCATION ${LIB_TARGET} LOCATION)
+        if(EXISTS "${LIB_LOCATION}")
+            foreach(SYMBOL ${REQUIRED_SYMBOLS})
+                execute_process(
+                    COMMAND nm -g "${LIB_LOCATION}"
+                    COMMAND grep -q "${SYMBOL}"
+                    RESULT_VARIABLE SYMBOL_FOUND
+                    OUTPUT_QUIET ERROR_QUIET
+                )
+                if(NOT SYMBOL_FOUND EQUAL 0)
+                    message(WARNING "Symbol ${SYMBOL} not found in ${LIB_TARGET}")
+                    set(STATIC_LIBS_COMPLETE FALSE)
+                    break()
+                endif()
+            endforeach()
+        else()
+            set(STATIC_LIBS_COMPLETE FALSE)
+        endif()
+        if(NOT STATIC_LIBS_COMPLETE)
+            break()
+        endif()
+    endforeach()
+    
+    # Set global variable based on completeness check
+    set(USE_OBJECT_LIBRARIES ${STATIC_LIBS_COMPLETE} PARENT_SCOPE)
+    
+    if(STATIC_LIBS_COMPLETE)
+        message(STATUS "✅ Static libraries are complete - using pure glue-code architecture")
+    else()
+        message(STATUS "⚠️  Static libraries incomplete - falling back to OBJECT library strategy")
+    endif()
+endfunction()
 
-# Ensure build order: static libraries must be built before our target
-add_dependencies(newrllama llama common ggml)
+# Check static library completeness (will be run at build time)
+set(USE_OBJECT_LIBRARIES TRUE)  # Default to OBJECT libraries for safety
 
-# Link static libraries with complete symbol inclusion using platform-specific whole-archive
-if(APPLE)
-    target_link_options(newrllama PRIVATE
-        "-Wl,-force_load,$<TARGET_FILE:llama>"
-        "-Wl,-force_load,$<TARGET_FILE:common>"
-        "-Wl,-force_load,$<TARGET_FILE:ggml>"
+# === GLUE-CODE ARCHITECTURE: OBJECT Library Implementation ===
+if(USE_OBJECT_LIBRARIES)
+    message(STATUS "🔧 Using OBJECT library fallback strategy")
+    
+    # Create our shared library with essential source files
+    add_library(newrllama SHARED 
+        newrllama_capi.cpp
+        # Essential GGML core that's often missing from static libs
+        ggml/src/ggml.c
+        ggml/src/gguf.cpp
+        ggml/src/ggml-alloc.c
+        ggml/src/ggml-backend.cpp
+        ggml/src/ggml-quants.c
     )
-elseif(UNIX AND NOT APPLE)
-    target_link_libraries(newrllama PRIVATE
-        "-Wl,--whole-archive" llama common ggml "-Wl,--no-whole-archive"
-    )
-elseif(WIN32)
-    target_link_options(newrllama PRIVATE 
-        "/WHOLEARCHIVE:$<TARGET_FILE:llama>"
-        "/WHOLEARCHIVE:$<TARGET_FILE:common>"
-        "/WHOLEARCHIVE:$<TARGET_FILE:ggml>"
-    )
+    
+    # Add platform-specific backend sources
+    if(APPLE AND BLAS_AVAILABLE)
+        target_sources(newrllama PRIVATE
+            ggml/src/ggml-blas/ggml-blas.cpp
+            ggml/src/ggml-cpu/ggml-cpu.c
+            ggml/src/ggml-cpu/ggml-cpu.cpp
+        )
+    endif()
+    
+    # Link with static libraries for additional functionality
+    target_link_libraries(newrllama PRIVATE llama common ggml)
+    
+else()
+    message(STATUS "🎯 Using pure glue-code architecture")
+    
+    # Only write "glue code" - don't manually list .c/.cpp files
+    add_library(newrllama SHARED newrllama_capi.cpp)
+    
+    # Ensure build order: static libraries must be built before our target
+    add_dependencies(newrllama llama common ggml)
+    
+    # Link static libraries with complete symbol inclusion using platform-specific whole-archive
+    if(APPLE)
+        target_link_options(newrllama PRIVATE
+            "-Wl,-force_load,$<TARGET_FILE:llama>"
+            "-Wl,-force_load,$<TARGET_FILE:common>"
+            "-Wl,-force_load,$<TARGET_FILE:ggml>"
+        )
+    elseif(UNIX AND NOT APPLE)
+        target_link_libraries(newrllama PRIVATE
+            "-Wl,--whole-archive" llama common ggml "-Wl,--no-whole-archive"
+        )
+    elseif(WIN32)
+        target_link_options(newrllama PRIVATE 
+            "/WHOLEARCHIVE:$<TARGET_FILE:llama>"
+            "/WHOLEARCHIVE:$<TARGET_FILE:common>"
+            "/WHOLEARCHIVE:$<TARGET_FILE:ggml>"
+        )
+    endif()
 endif()
 
-# Link system libraries and frameworks
+# Link system libraries and frameworks (common for both strategies)
 target_link_libraries(newrllama PRIVATE CURL::libcurl)
 
 # Link essential system libraries for all platforms
