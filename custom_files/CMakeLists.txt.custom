@@ -161,5 +161,17 @@ set(LLAMA_BUILD_SERVER OFF CACHE BOOL "Disable server for speed" FORCE)
 # Core functionality that ensures all symbols are available
 set(LLAMA_CURL OFF CACHE BOOL "Disable curl dependency" FORCE)
 
-# Add the llama.cpp subdirectory with comprehensive build
-add_subdirectory(backend/llama.cpp EXCLUDE_FROM_ALL)
+# Include original llama.cpp build logic (we ARE the CMakeLists.txt now)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/build-info.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/common.cmake)
+
+# Add ggml subdirectory
+add_subdirectory(ggml)
+
+# Add llama src subdirectory  
+add_subdirectory(src)
+
+# Add common subdirectory
+if (LLAMA_BUILD_COMMON)
+    add_subdirectory(common)
+endif()
