@@ -310,6 +310,8 @@ target_include_directories(newrllama PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/common"
     "${CMAKE_CURRENT_SOURCE_DIR}/ggml/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ggml/src"        # For ggml-impl.h
+    "${CMAKE_CURRENT_SOURCE_DIR}/ggml/src/ggml-cpu"  # For ggml-cpu-impl.h
 )
 
 # 6. Set final properties for our library.
