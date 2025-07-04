@@ -74,17 +74,12 @@ if(APPLE)
         )
     endif()
     
-    # Find and link Metal framework
-    find_library(METAL_FRAMEWORK Metal)
-    find_library(METALKIT_FRAMEWORK MetalKit)
-    find_library(FOUNDATION_FRAMEWORK Foundation)
-    
-    if(METAL_FRAMEWORK AND METALKIT_FRAMEWORK)
-        target_link_libraries(newrllama PRIVATE ${METAL_FRAMEWORK} ${METALKIT_FRAMEWORK})
-        target_compile_definitions(newrllama PRIVATE GGML_USE_METAL)
-    endif()
+    # Metal disabled due to CI file system permission issues
+    # find_library(METAL_FRAMEWORK Metal)
+    # find_library(METALKIT_FRAMEWORK MetalKit)
     
     # Link Foundation framework for basic macOS/iOS types
+    find_library(FOUNDATION_FRAMEWORK Foundation)
     if(FOUNDATION_FRAMEWORK)
         target_link_libraries(newrllama PRIVATE ${FOUNDATION_FRAMEWORK})
     endif()
@@ -142,7 +137,7 @@ set(GGML_FATAL_WARNINGS OFF CACHE BOOL "Disable fatal warnings" FORCE)
 # Enable essential GGML backends for comprehensive symbol coverage
 if(APPLE)
     set(GGML_ACCELERATE ON CACHE BOOL "Enable Accelerate framework" FORCE)
-    set(GGML_METAL ON CACHE BOOL "Enable Metal support" FORCE)
+    set(GGML_METAL OFF CACHE BOOL "Disable Metal to avoid file system permission issues in CI" FORCE)
     set(GGML_BLAS ON CACHE BOOL "Enable BLAS support" FORCE)
     set(GGML_BLAS_USE_ACCELERATE ON CACHE BOOL "Use Accelerate for BLAS" FORCE)
 endif()
