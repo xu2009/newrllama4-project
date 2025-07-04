@@ -267,9 +267,11 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/llama.pc"
 # Find the cURL library, needed for some llama.cpp features.
 find_package(CURL REQUIRED)
 
-# 1. Define our own shared library target (CLEAN - no manual sources).
+# 1. Define our own shared library target.
+#    CRITICAL FIX: Explicitly include the gguf.cpp source to ensure gguf_write_to_file is available
 add_library(newrllama SHARED
     newrllama_capi.cpp
+    ggml/src/gguf.cpp
 )
 
 # 2. Add dependencies to ensure correct build order.

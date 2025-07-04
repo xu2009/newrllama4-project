@@ -47,7 +47,7 @@
       # Only attempt cleanup if the package is being properly unloaded
       # Skip API reset to avoid alignment issues
       if (exists("dyn.unload") && is.function(dyn.unload)) {
-        dyn.unload(.pkg_env$lib[["path"]])
+      dyn.unload(.pkg_env$lib[["path"]])
       }
     }, error = function(e) {
       # Silently handle unload errors

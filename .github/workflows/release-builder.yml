@@ -48,19 +48,26 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential cmake curl libcurl4-openssl-dev
 
-    # COPILOT'S FIX for Windows dependencies - This is much more robust
-    - name: Set up vcpkg and install dependencies (Windows)
+    # FIX FOR WINDOWS: Split vcpkg setup into proper steps
+    - name: Clone and bootstrap vcpkg (Windows)
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: |
+        echo ##[group]Setting up vcpkg...
+        git clone https://github.com/microsoft/vcpkg.git
+        call vcpkg\bootstrap-vcpkg.bat
+        echo ##[endgroup]
+
+    - name: Set up VCPKG_ROOT for Windows
+      if: runner.os == 'Windows'
+      shell: bash
+      run: echo "VCPKG_ROOT=$GITHUB_WORKSPACE/vcpkg" >> $GITHUB_ENV
+
+    - name: Install curl via vcpkg (Windows)
       if: runner.os == 'Windows'
       shell: bash
       run: |
-        echo "##[group]Setting up vcpkg..."
-        git clone https://github.com/microsoft/vcpkg.git
-        ./vcpkg/bootstrap-vcpkg.bat
-        # CRITICAL FIX for Windows: Use absolute path with $GITHUB_WORKSPACE
-        echo "VCPKG_ROOT=$GITHUB_WORKSPACE/vcpkg" >> $GITHUB_ENV
-        echo "##[endgroup]"
         echo "##[group]Installing curl via vcpkg..."
-        # CRITICAL FIX: Use .exe extension for Windows
         $VCPKG_ROOT/vcpkg.exe install curl:x64-windows-static
         echo "##[endgroup]"
 
