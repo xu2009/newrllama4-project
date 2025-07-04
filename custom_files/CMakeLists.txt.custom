@@ -284,10 +284,10 @@ else()
 endif()
 
 # 1. Define our own shared library target.
-#    SIMPLIFIED APPROACH: Only include our C-API and rely on static library linking
+#    PLAN A: Minimal targeted fix - only add missing GGUF functionality
 add_library(newrllama SHARED
     newrllama_capi.cpp
-    # Only include minimal essential sources that aren't in static libraries
+    ggml/src/gguf.cpp        # TARGETED FIX: Only add missing GGUF functions (gguf_type_name, gguf_write_to_file)
 )
 
 # Add platform-specific backend sources only if they're not in static libraries
