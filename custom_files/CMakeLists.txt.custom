@@ -30,6 +30,11 @@ if(APPLE)
     endif()
     set(GGML_BLAS ON CACHE BOOL "Enable BLAS support" FORCE)
     set(GGML_BLAS_USE_ACCELERATE ON CACHE BOOL "Use Accelerate for BLAS" FORCE)
+    
+    # Fix Metal library embedding for GitHub Actions (avoid file system permission issues)
+    if(GGML_METAL)
+        set(GGML_METAL_EMBED_LIBRARY ON CACHE BOOL "Embed Metal library to avoid file system issues" FORCE)
+    endif()
 endif()
 
 # Disable problematic features for clean builds
