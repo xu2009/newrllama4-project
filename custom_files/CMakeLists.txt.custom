@@ -24,7 +24,10 @@ set(LLAMA_BUILD_SERVER OFF CACHE BOOL "Disable server for clean build" FORCE)
 # Platform-specific backend configuration (ensure symbols are included)
 if(APPLE)
     set(GGML_ACCELERATE ON CACHE BOOL "Enable Accelerate framework" FORCE)
-    set(GGML_METAL ON CACHE BOOL "Enable Metal GPU acceleration" FORCE)
+    # Allow Metal to be controlled by command line (-DGGML_METAL=ON/OFF)
+    if(NOT DEFINED GGML_METAL)
+        set(GGML_METAL OFF CACHE BOOL "Metal GPU acceleration (auto-detected)" FORCE)
+    endif()
     set(GGML_BLAS ON CACHE BOOL "Enable BLAS support" FORCE)
     set(GGML_BLAS_USE_ACCELERATE ON CACHE BOOL "Use Accelerate for BLAS" FORCE)
 endif()
@@ -137,6 +140,13 @@ if(USE_OBJECT_LIBRARIES)
         )
     endif()
     
+    # Add Metal backend sources if enabled
+    if(APPLE AND GGML_METAL)
+        target_sources(newrllama PRIVATE
+            ggml/src/ggml-metal/ggml-metal.m
+        )
+    endif()
+    
     # Link with static libraries for additional functionality
     target_link_libraries(newrllama PRIVATE llama common ggml)
     
@@ -214,6 +224,13 @@ target_include_directories(newrllama PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/ggml/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/ggml/src/ggml-cpu"
 )
+
+# Add Metal include directory if enabled
+if(APPLE AND GGML_METAL)
+    target_include_directories(newrllama PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/ggml/src/ggml-metal"
+    )
+endif()
 
 # Set final properties for our library
 set_target_properties(newrllama PROPERTIES
