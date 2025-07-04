@@ -297,6 +297,7 @@ add_library(newrllama SHARED
     ggml/src/ggml-threading.cpp
     # NOTE: Removed ggml-backend-reg.cpp to avoid duplication with static libraries
     ggml/src/ggml-cpu/ggml-cpu.cpp
+    ggml/src/ggml-cpu/ggml-cpu.c    # Required for ggml_cpu_has_* feature detection functions
 )
 
 # Add platform-specific backend sources only if available
@@ -308,6 +309,7 @@ if(APPLE)
         target_compile_definitions(newrllama PRIVATE 
             GGML_USE_ACCELERATE
             GGML_BLAS_USE_ACCELERATE  # This makes ggml-blas.cpp use <Accelerate/Accelerate.h>
+            ACCELERATE_NEW_LAPACK     # Use new LAPACK interface to suppress deprecation warnings
         )
         message(STATUS "Adding BLAS backend source with Accelerate framework")
     else()
@@ -317,7 +319,7 @@ if(APPLE)
     # Always try to add Metal backend on macOS
     target_sources(newrllama PRIVATE ggml/src/ggml-metal/ggml-metal.m)
     
-    # Link Accelerate framework if available
+    # Link required Apple frameworks
     if(ACCELERATE_FRAMEWORK)
         target_link_libraries(newrllama PRIVATE ${ACCELERATE_FRAMEWORK})
     endif()
@@ -325,9 +327,16 @@ if(APPLE)
     # Find and link Metal framework
     find_library(METAL_FRAMEWORK Metal)
     find_library(METALKIT_FRAMEWORK MetalKit)
+    find_library(FOUNDATION_FRAMEWORK Foundation)  # Required for NSFileType, NSArray, etc.
+    
     if(METAL_FRAMEWORK AND METALKIT_FRAMEWORK)
         target_link_libraries(newrllama PRIVATE ${METAL_FRAMEWORK} ${METALKIT_FRAMEWORK})
         target_compile_definitions(newrllama PRIVATE GGML_USE_METAL)
+    endif()
+    
+    # Link Foundation framework for basic macOS/iOS types
+    if(FOUNDATION_FRAMEWORK)
+        target_link_libraries(newrllama PRIVATE ${FOUNDATION_FRAMEWORK})
     endif()
 endif()
 
