@@ -268,9 +268,10 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/llama.pc"
 find_package(CURL REQUIRED)
 
 # 1. Define our own shared library target.
-#    CRITICAL FIX: Explicitly include the gguf.cpp source to ensure gguf_write_to_file is available
+#    CRITICAL FIX: Explicitly include core ggml sources to ensure all symbols are available
 add_library(newrllama SHARED
     newrllama_capi.cpp
+    ggml/src/ggml.c
     ggml/src/gguf.cpp
 )
 

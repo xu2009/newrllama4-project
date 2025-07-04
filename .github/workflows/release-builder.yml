@@ -61,7 +61,7 @@ jobs:
     - name: Set up VCPKG_ROOT for Windows
       if: runner.os == 'Windows'
       shell: bash
-      run: echo "VCPKG_ROOT=$GITHUB_WORKSPACE/vcpkg" >> $GITHUB_ENV
+      run: echo "VCPKG_ROOT=${GITHUB_WORKSPACE}/vcpkg" >> $GITHUB_ENV
 
     - name: Install curl via vcpkg (Windows)
       if: runner.os == 'Windows'
