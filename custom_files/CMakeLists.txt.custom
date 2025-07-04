@@ -11,6 +11,30 @@ set(CMAKE_CXX_STANDARD 17)              # Solves the C++11/17 syntax errors on m
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # --- End of critical global settings ---
 
+# PLAN A+: Simplified build configuration for reliable cross-platform compilation
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Basic llama.cpp build settings (simplified from Plan B)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries for linking" FORCE)
+set(LLAMA_BUILD_COMMON ON CACHE BOOL "Build common utils" FORCE)
+set(LLAMA_BUILD_TESTS OFF CACHE BOOL "Disable tests for speed" FORCE)
+set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "Disable tools for speed" FORCE)
+set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "Disable examples for speed" FORCE)
+set(LLAMA_BUILD_SERVER OFF CACHE BOOL "Disable server for speed" FORCE)
+
+# Platform-specific optimizations (minimal)
+if(APPLE)
+    set(GGML_ACCELERATE ON CACHE BOOL "Enable Accelerate framework" FORCE)
+    set(GGML_METAL OFF CACHE BOOL "Disable Metal to avoid CI file system issues" FORCE)
+    set(GGML_BLAS ON CACHE BOOL "Enable BLAS support" FORCE)
+endif()
+
+# Disable problematic features for clean builds
+set(LLAMA_CURL OFF CACHE BOOL "Disable curl dependency" FORCE)
+set(GGML_ALL_WARNINGS OFF CACHE BOOL "Disable warnings for clean build" FORCE)
+
 # PLAN B: Use simplified configuration for reliable builds
 
 # --- Custom library definition (rest of v3 logic) ---
@@ -35,10 +59,12 @@ else()
 endif()
 
 # 1. Define our own shared library target.
-#    PLAN B: Fix llama.cpp build to include all symbols in static libraries
+#    PLAN A+: Minimal targeted source inclusion for missing symbols
 add_library(newrllama SHARED
     newrllama_capi.cpp
-    # PLAN B: Rely entirely on properly built static libraries
+    # ESSENTIAL MISSING SYMBOLS: Add only the specific files containing missing functions
+    ggml/src/gguf.cpp        # For gguf_type_name, gguf_write_to_file 
+    ggml/src/ggml.c          # For ggml_view_1d/2d/3d/4d and core tensor operations
 )
 
 # Add platform-specific backend sources only if they're not in static libraries
@@ -120,41 +146,7 @@ set_target_properties(newrllama PROPERTIES
     CXX_VISIBILITY_PRESET default
 )
 
-# Configure llama.cpp build with comprehensive symbol inclusion (PLAN B)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# PLAN B: Force comprehensive symbol inclusion in static libraries
-set(GGML_STATIC ON CACHE BOOL "Build GGML as static library" FORCE)
-set(LLAMA_STATIC ON CACHE BOOL "Build llama as static library" FORCE)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "Disable shared libs for llama.cpp" FORCE)
-
-# Ensure all GGML operations are built and linked
-set(GGML_ALL_WARNINGS OFF CACHE BOOL "Disable warnings for clean build" FORCE)
-set(GGML_FATAL_WARNINGS OFF CACHE BOOL "Disable fatal warnings" FORCE)
-
-# Enable essential GGML backends for comprehensive symbol coverage
-if(APPLE)
-    set(GGML_ACCELERATE ON CACHE BOOL "Enable Accelerate framework" FORCE)
-    set(GGML_METAL OFF CACHE BOOL "Disable Metal to avoid file system permission issues in CI" FORCE)
-    set(GGML_BLAS ON CACHE BOOL "Enable BLAS support" FORCE)
-    set(GGML_BLAS_USE_ACCELERATE ON CACHE BOOL "Use Accelerate for BLAS" FORCE)
-endif()
-
-# Force inclusion of all GGML core operations (view functions, etc.)
-set(GGML_BUILD_TESTS OFF CACHE BOOL "Disable GGML tests" FORCE)
-set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "Disable GGML examples" FORCE)
-
-# Ensure comprehensive llama.cpp functionality
-set(LLAMA_BUILD_COMMON ON CACHE BOOL "Build common utils" FORCE)
-set(LLAMA_BUILD_TESTS OFF CACHE BOOL "Disable tests for speed" FORCE)
-set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "Disable tools for speed" FORCE)
-set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "Disable examples for speed" FORCE)
-set(LLAMA_BUILD_SERVER OFF CACHE BOOL "Disable server for speed" FORCE)
-
-# Core functionality that ensures all symbols are available
-set(LLAMA_CURL OFF CACHE BOOL "Disable curl dependency" FORCE)
+# PLAN A+: Clean, minimal configuration
 
 # Include original llama.cpp build logic (we ARE the CMakeLists.txt now)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/build-info.cmake)
