@@ -49,35 +49,18 @@ jobs:
         sudo apt-get install -y build-essential cmake curl libcurl4-openssl-dev
 
     # FIX FOR WINDOWS: Split vcpkg setup into proper steps
-    - name: Clone and bootstrap vcpkg (Windows)
+    - name: Setup vcpkg and install curl (Windows)
       if: runner.os == 'Windows'
       shell: cmd
-      working-directory: ${{ github.workspace }}
       run: |
-        echo ##[group]Setting up vcpkg...
-        git clone https://github.com/microsoft/vcpkg.git
-        call vcpkg\bootstrap-vcpkg.bat
+        echo ##[group]Setting up vcpkg and installing curl...
+        cd /d %GITHUB_WORKSPACE%
+        git clone https://github.com/microsoft/vcpkg.git vcpkg
+        cd vcpkg
+        call bootstrap-vcpkg.bat
+        vcpkg.exe install curl:x64-windows-static
+        echo VCPKG_ROOT=%GITHUB_WORKSPACE%\vcpkg>> %GITHUB_ENV%
         echo ##[endgroup]
-
-    - name: Print GITHUB_WORKSPACE for debugging
-      if: runner.os == 'Windows'
-      shell: bash
-      run: echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
-
-    - name: Set up VCPKG_ROOT for Windows
-      if: runner.os == 'Windows'
-      shell: cmd
-      run: |
-        set VCPKG_ROOT=%GITHUB_WORKSPACE%\vcpkg
-        echo VCPKG_ROOT=%VCPKG_ROOT%>> %GITHUB_ENV%
-
-    - name: Install curl via vcpkg (Windows)
-      if: runner.os == 'Windows'
-      shell: bash
-      run: |
-        echo "##[group]Installing curl via vcpkg..."
-        $VCPKG_ROOT/vcpkg.exe install curl:x64-windows-static
-        echo "##[endgroup]"
 
     # --- Inject our custom files ---
     - name: Copy custom files to llama.cpp directory

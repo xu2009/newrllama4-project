@@ -278,7 +278,17 @@ add_library(newrllama SHARED
     ggml/src/ggml-alloc.c
     ggml/src/ggml-backend.cpp
     ggml/src/ggml-threading.cpp
+    ggml/src/ggml-backend-reg.cpp
+    ggml/src/ggml-cpu/ggml-cpu.cpp
 )
+
+# Add platform-specific backend sources
+if(APPLE)
+    target_sources(newrllama PRIVATE
+        ggml/src/ggml-blas/ggml-blas.cpp  # For ggml_backend_blas_reg
+        ggml/src/ggml-metal/ggml-metal.m  # For ggml_backend_metal_reg
+    )
+endif()
 
 # 2. Add dependencies to ensure correct build order.
 add_dependencies(newrllama llama common ggml)
