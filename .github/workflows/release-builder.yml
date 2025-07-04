@@ -116,14 +116,28 @@ jobs:
       run: |
         cd backend/llama.cpp
         echo "🔍 Running symbol verification for glue-code architecture..."
+        echo "📊 Platform: ${{ runner.os }} (${{ matrix.os_name }})"
         
         # Run our symbol verification script
         if ./check_symbols.sh build; then
           echo "✅ Static libraries contain all required symbols - glue-code architecture is working!"
+          echo "🎯 This platform may be able to use pure static library linking in the future."
         else
           echo "⚠️  Some symbols missing from static libraries."
-          echo "    This indicates the build configuration needs adjustment."
-          echo "    The build will continue, but runtime issues may occur."
+          echo "🔧 OBJECT library fallback strategy will handle the missing symbols."
+          echo "📈 Platform-specific analysis:"
+          case "${{ runner.os }}" in
+            "Linux")
+              echo "    Linux often has symbols in libllama.a but missing from libggml.a"
+              ;;
+            "macOS") 
+              echo "    macOS typically needs OBJECT library fallback due to framework integration"
+              ;;
+            "Windows")
+              echo "    Windows may have different symbol distribution across static libraries"
+              ;;
+          esac
+          echo "    The build will continue with OBJECT library strategy."
         fi
 
     # --- Package and Upload ---
@@ -133,19 +147,54 @@ jobs:
         # Create a temporary 'staging' directory for packaging.
         mkdir -p staging/lib
         
-        # Define the path to the compiled library.
+        # Find the actual location of the compiled library
+        echo "🔍 Searching for compiled library..."
+        find backend/llama.cpp/build -name "*newrllama*" -type f
+        
+        # Define the path to the compiled library based on platform and actual location
         if [[ "${{ runner.os }}" == "Windows" ]]; then
-          LIB_PATH="backend/llama.cpp/build/bin/Release/${{ matrix.lib_name }}"
+          # Check multiple possible locations for Windows
+          if [[ -f "backend/llama.cpp/build/bin/Release/${{ matrix.lib_name }}" ]]; then
+            LIB_PATH="backend/llama.cpp/build/bin/Release/${{ matrix.lib_name }}"
+          elif [[ -f "backend/llama.cpp/build/Release/${{ matrix.lib_name }}" ]]; then
+            LIB_PATH="backend/llama.cpp/build/Release/${{ matrix.lib_name }}"
+          elif [[ -f "backend/llama.cpp/build/${{ matrix.lib_name }}" ]]; then
+            LIB_PATH="backend/llama.cpp/build/${{ matrix.lib_name }}"
+          else
+            echo "❌ Cannot find Windows library file"
+            find backend/llama.cpp/build -name "*.dll" -type f
+            exit 1
+          fi
         else
-          LIB_PATH="backend/llama.cpp/build/bin/${{ matrix.lib_name }}"
+          # Check multiple possible locations for Unix-like systems
+          if [[ -f "backend/llama.cpp/build/bin/${{ matrix.lib_name }}" ]]; then
+            LIB_PATH="backend/llama.cpp/build/bin/${{ matrix.lib_name }}"
+          elif [[ -f "backend/llama.cpp/build/${{ matrix.lib_name }}" ]]; then
+            LIB_PATH="backend/llama.cpp/build/${{ matrix.lib_name }}"
+          elif [[ -f "backend/llama.cpp/build/lib${{ matrix.lib_name }}" ]]; then
+            LIB_PATH="backend/llama.cpp/build/lib${{ matrix.lib_name }}"
+          else
+            echo "❌ Cannot find Unix library file"
+            find backend/llama.cpp/build -name "*.so" -o -name "*.dylib" -type f
+            exit 1
+          fi
         fi
 
-        # Copy the library into the staging directory.
-        echo "Copying $LIB_PATH to staging/lib/"
-        cp "$LIB_PATH" staging/lib/
+        # Verify the library file exists and copy it
+        echo "📁 Using library path: $LIB_PATH"
+        if [[ -f "$LIB_PATH" ]]; then
+          echo "✅ Library file found, copying to staging/lib/"
+          cp "$LIB_PATH" staging/lib/
+          echo "📊 Library info:"
+          ls -la staging/lib/
+          file staging/lib/*
+        else
+          echo "❌ Library file not found at: $LIB_PATH"
+          exit 1
+        fi
 
         # Create the zip archive.
-        echo "Creating zip archive: ${{ matrix.artifact_name }}"
+        echo "📦 Creating zip archive: ${{ matrix.artifact_name }}"
         cd staging
         zip -r ../${{ matrix.artifact_name }} .
         cd ..
