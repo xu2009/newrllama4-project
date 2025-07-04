@@ -267,10 +267,26 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/llama.pc"
 # Find the cURL library, needed for some llama.cpp features.
 find_package(CURL REQUIRED)
 
+# Check for BLAS availability on macOS
+if(APPLE)
+    # Try to find BLAS/CBLAS
+    find_library(ACCELERATE_FRAMEWORK Accelerate)
+    if(ACCELERATE_FRAMEWORK)
+        message(STATUS "Found Accelerate framework for BLAS support")
+        set(BLAS_AVAILABLE TRUE)
+    else()
+        message(STATUS "Accelerate framework not found, disabling BLAS backend")
+        set(BLAS_AVAILABLE FALSE)
+    endif()
+else()
+    set(BLAS_AVAILABLE FALSE)
+endif()
+
 # 1. Define our own shared library target.
-#    CRITICAL FIX: Explicitly include core ggml sources to ensure all symbols are available
+#    CRITICAL FIX: Remove sources that are already in static libraries to avoid duplication
 add_library(newrllama SHARED
     newrllama_capi.cpp
+    # Core GGML sources - only include what's absolutely necessary
     ggml/src/ggml.c
     ggml/src/gguf.cpp
     ggml/src/ggml-quants.c
@@ -278,16 +294,33 @@ add_library(newrllama SHARED
     ggml/src/ggml-alloc.c
     ggml/src/ggml-backend.cpp
     ggml/src/ggml-threading.cpp
-    ggml/src/ggml-backend-reg.cpp
+    # NOTE: Removed ggml-backend-reg.cpp to avoid duplication with static libraries
     ggml/src/ggml-cpu/ggml-cpu.cpp
 )
 
-# Add platform-specific backend sources
+# Add platform-specific backend sources only if available
 if(APPLE)
-    target_sources(newrllama PRIVATE
-        ggml/src/ggml-blas/ggml-blas.cpp  # For ggml_backend_blas_reg
-        ggml/src/ggml-metal/ggml-metal.m  # For ggml_backend_metal_reg
-    )
+    # Only add BLAS backend if CBLAS is available
+    if(BLAS_AVAILABLE)
+        target_sources(newrllama PRIVATE ggml/src/ggml-blas/ggml-blas.cpp)
+        target_compile_definitions(newrllama PRIVATE GGML_USE_ACCELERATE)
+    endif()
+    
+    # Always try to add Metal backend on macOS
+    target_sources(newrllama PRIVATE ggml/src/ggml-metal/ggml-metal.m)
+    
+    # Link Accelerate framework if available
+    if(ACCELERATE_FRAMEWORK)
+        target_link_libraries(newrllama PRIVATE ${ACCELERATE_FRAMEWORK})
+    endif()
+    
+    # Find and link Metal framework
+    find_library(METAL_FRAMEWORK Metal)
+    find_library(METALKIT_FRAMEWORK MetalKit)
+    if(METAL_FRAMEWORK AND METALKIT_FRAMEWORK)
+        target_link_libraries(newrllama PRIVATE ${METAL_FRAMEWORK} ${METALKIT_FRAMEWORK})
+        target_compile_definitions(newrllama PRIVATE GGML_USE_METAL)
+    endif()
 endif()
 
 # 2. Add dependencies to ensure correct build order.
@@ -296,8 +329,6 @@ add_dependencies(newrllama llama common ggml)
 # 3. Link system libraries and frameworks.
 target_link_libraries(newrllama PRIVATE
     CURL::libcurl      # Use CMake's official way to link curl
-    ${ACCELERATE_LIBS}
-    ${METAL_LIBS}
 )
 
 # 3.1. Link essential system libraries for all platforms

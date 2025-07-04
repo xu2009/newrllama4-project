@@ -48,19 +48,21 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential cmake curl libcurl4-openssl-dev
 
-    # FIX FOR WINDOWS: Split vcpkg setup into proper steps
+    # FIX FOR WINDOWS v1.0.21: Use PowerShell for better path handling
     - name: Setup vcpkg and install curl (Windows)
       if: runner.os == 'Windows'
-      shell: cmd
+      shell: pwsh
       run: |
-        echo ##[group]Setting up vcpkg and installing curl...
-        cd /d %GITHUB_WORKSPACE%
+        Write-Host "##[group]Setting up vcpkg and installing curl..."
+        Set-Location $env:GITHUB_WORKSPACE
         git clone https://github.com/microsoft/vcpkg.git vcpkg
-        cd vcpkg
-        call bootstrap-vcpkg.bat
-        vcpkg.exe install curl:x64-windows-static
-        echo VCPKG_ROOT=%GITHUB_WORKSPACE%\vcpkg>> %GITHUB_ENV%
-        echo ##[endgroup]
+        Set-Location vcpkg
+        .\bootstrap-vcpkg.bat
+        .\vcpkg.exe install curl:x64-windows-static
+        $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
+        Write-Host "VCPKG_ROOT=$vcpkgRoot"
+        "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        Write-Host "##[endgroup]"
 
     # --- Inject our custom files ---
     - name: Copy custom files to llama.cpp directory
@@ -83,7 +85,9 @@ jobs:
         
         # Platform-specific arguments
         if [[ "${{ runner.os }}" == "Windows" ]]; then
-          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=\"$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake\" -DVCPKG_TARGET_TRIPLET=x64-windows-static"
+          # Convert Windows path separators for CMake
+          VCPKG_CMAKE_PATH=$(echo "$VCPKG_ROOT" | sed 's|\\|/|g')/scripts/buildsystems/vcpkg.cmake
+          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=\"$VCPKG_CMAKE_PATH\" -DVCPKG_TARGET_TRIPLET=x64-windows-static"
         elif [[ "${{ runner.os }}" == "macOS" ]]; then
           CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DLLAMA_METAL=ON"
         else # Linux
