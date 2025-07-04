@@ -277,6 +277,7 @@ add_library(newrllama SHARED
     ggml/src/ggml-opt.cpp
     ggml/src/ggml-alloc.c
     ggml/src/ggml-backend.cpp
+    ggml/src/ggml-threading.cpp
 )
 
 # 2. Add dependencies to ensure correct build order.
@@ -288,6 +289,11 @@ target_link_libraries(newrllama PRIVATE
     ${ACCELERATE_LIBS}
     ${METAL_LIBS}
 )
+
+# 3.1. Link essential system libraries for all platforms
+if(UNIX)
+    target_link_libraries(newrllama PRIVATE m pthread)  # math and threading libraries
+endif()
 
 # 4. Statically link the internal libraries using platform-specific flags.
 if(APPLE)

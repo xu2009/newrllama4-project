@@ -66,11 +66,10 @@ jobs:
 
     - name: Set up VCPKG_ROOT for Windows
       if: runner.os == 'Windows'
-      shell: bash
+      shell: cmd
       run: |
-        VCPKG_PATH="${{ github.workspace }}/vcpkg"
-        VCPKG_PATH_WIN=$(echo "$VCPKG_PATH" | sed 's|/|\\|g')
-        echo "VCPKG_ROOT=$VCPKG_PATH_WIN" >> $GITHUB_ENV
+        set VCPKG_ROOT=%GITHUB_WORKSPACE%\vcpkg
+        echo VCPKG_ROOT=%VCPKG_ROOT%>> %GITHUB_ENV%
 
     - name: Install curl via vcpkg (Windows)
       if: runner.os == 'Windows'
@@ -114,9 +113,9 @@ jobs:
         echo "Building target 'newrllama'..."
         # CRITICAL FIX for Windows: Use /m for MSBuild, -j for make/ninja
         if [[ "${{ runner.os }}" == "Windows" ]]; then
-          cmake --build . --config Release --target newrllama -- /m:2
+          cmake --build . --config Release --target newrllama --verbose -- /m:2
         else
-          cmake --build . --config Release --target newrllama -- -j 2
+          cmake --build . --config Release --target newrllama --verbose -- -j 2
         fi
         
     # --- Package and Upload ---
