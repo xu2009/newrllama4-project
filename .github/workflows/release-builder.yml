@@ -210,7 +210,13 @@ jobs:
         # Create the zip archive.
         echo "📦 Creating zip archive: ${{ matrix.artifact_name }}"
         cd staging
-        zip -r ../${{ matrix.artifact_name }} .
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          # Use PowerShell's Compress-Archive on Windows
+          powershell -Command "Compress-Archive -Path * -DestinationPath ../${{ matrix.artifact_name }}"
+        else
+          # Use zip on Unix-like systems
+          zip -r ../${{ matrix.artifact_name }} .
+        fi
         cd ..
 
     - name: Upload Artifact to Release
