@@ -52,20 +52,30 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential cmake curl libcurl4-openssl-dev
 
-    # PROFESSIONAL FIX: Use official setup-vcpkg action with caching
-    - name: Setup vcpkg (Windows - Professional)
-      if: runner.os == 'Windows'
-      uses: microsoft/setup-vcpkg@v1
+    # Windows-specific vcpkg setup
+    - name: Setup vcpkg (Windows - Fixed)
+      if: matrix.os == 'windows-latest'
+      uses: johnwason/vcpkg-action@v6
+      id: vcpkg
       with:
-        triplet: ${{ env.VCPKG_DEFAULT_TRIPLET }}
+        pkgs: # No packages needed, just setup
+        triplet: x64-windows-static
+        token: ${{ github.token }}
         
-    - name: Install curl with vcpkg (Windows)
-      if: runner.os == 'Windows'
-      shell: pwsh
+    - name: Set vcpkg environment (Windows - Fixed)
+      if: matrix.os == 'windows-latest'
+      shell: bash
       run: |
-        Write-Host "##[group]Installing curl with vcpkg..."
-        vcpkg install curl:${{ env.VCPKG_DEFAULT_TRIPLET }}
-        Write-Host "##[endgroup]"
+        echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $GITHUB_ENV
+        echo "VCPKG_CMAKE_PATH=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" >> $GITHUB_ENV
+
+    - name: Install curl with vcpkg (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: bash
+      run: |
+        echo "Installing curl with vcpkg..."
+        ${VCPKG_ROOT}/vcpkg install curl:x64-windows-static
+        echo "vcpkg curl installation complete"
 
     # --- Inject our custom files ---
     - name: Copy custom files to llama.cpp directory
@@ -92,22 +102,18 @@ jobs:
         CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF"
         
         # Platform-specific arguments with FIXED path handling
-        OS_NAME="${{ runner.os }}"
-        if [[ "$OS_NAME" == "Windows" ]]; then
-          # PROFESSIONAL FIX: No quotes in variable, proper path conversion
-          VCPKG_CMAKE_PATH=$(cygpath -u "$VCPKG_ROOT")/scripts/buildsystems/vcpkg.cmake
-          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=$VCPKG_CMAKE_PATH -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_DEFAULT_TRIPLET }}"
+        OS_NAME="${{ matrix.os }}"
+        if [[ "$OS_NAME" == "windows-latest" ]]; then
+          # FIXED: Use environment variable set by vcpkg action
+          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=${VCPKG_CMAKE_PATH} -DVCPKG_TARGET_TRIPLET=x64-windows-static"
           CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
-          echo "🔧 Windows: Using vcpkg toolchain at $VCPKG_CMAKE_PATH"
-        elif [[ "$OS_NAME" == "macOS" ]]; then
-          # Enable Metal GPU acceleration only for Apple Silicon (macos-14)
-          if [[ "${{ matrix.os }}" == "macos-14" ]]; then
-            CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON"
-            echo "🚀 Enabling Metal GPU acceleration for Apple Silicon (with embedded library)"
-          else
-            CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON"
-            echo "💻 Using CPU acceleration for Intel Mac (Metal disabled)"
-          fi
+          echo "🔧 Windows: Using vcpkg toolchain at ${VCPKG_CMAKE_PATH}"
+        elif [[ "$OS_NAME" == "macos-13" ]]; then
+          CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON"
+          echo "💻 Using CPU acceleration for Intel Mac (Metal disabled)"
+        elif [[ "$OS_NAME" == "macos-14" ]]; then
+          CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON"
+          echo "🚀 Enabling Metal GPU acceleration for Apple Silicon (with embedded library)"
         else # Linux
           CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON"
         fi
@@ -119,8 +125,8 @@ jobs:
         cmake .. $CMAKE_ARGS
         
         echo "Building target 'newrllama'..."
-        # PROFESSIONAL BUILD: Auto-detect CPU cores and use proper flags
-        if [[ "$OS_NAME" == "Windows" ]]; then
+        # FIXED BUILD: Use matrix.os for platform detection
+        if [[ "$OS_NAME" == "windows-latest" ]]; then
           cmake --build . --config Release --target newrllama --parallel
         else
           cmake --build . --config Release --target newrllama --parallel
@@ -142,14 +148,14 @@ jobs:
           echo "⚠️  Some symbols missing from static libraries."
           echo "🔧 OBJECT library fallback strategy will handle the missing symbols."
           echo "📈 Platform-specific analysis:"
-          case "${{ runner.os }}" in
-            "Linux")
+          case "${{ matrix.os }}" in
+            "ubuntu-latest")
               echo "    Linux often has symbols in libllama.a but missing from libggml.a"
               ;;
-            "macOS") 
+            "macos-13"|"macos-14") 
               echo "    macOS typically needs OBJECT library fallback due to framework integration"
               ;;
-            "Windows")
+            "windows-latest")
               echo "    Windows may have different symbol distribution across static libraries"
               ;;
           esac
@@ -168,7 +174,7 @@ jobs:
         find backend/llama.cpp/build -name "*newrllama*" -type f
         
         # Define the path to the compiled library based on platform and actual location
-        if [[ "${{ runner.os }}" == "Windows" ]]; then
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
           # Check multiple possible locations for Windows
           if [[ -f "backend/llama.cpp/build/bin/Release/${{ matrix.lib_name }}" ]]; then
             LIB_PATH="backend/llama.cpp/build/bin/Release/${{ matrix.lib_name }}"
