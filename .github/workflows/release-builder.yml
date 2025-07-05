@@ -58,7 +58,7 @@ jobs:
       uses: johnwason/vcpkg-action@v6
       id: vcpkg
       with:
-        pkgs: # No packages needed, just setup
+        pkgs: curl
         triplet: x64-windows-static
         token: ${{ github.token }}
         
@@ -68,14 +68,6 @@ jobs:
       run: |
         echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $GITHUB_ENV
         echo "VCPKG_CMAKE_PATH=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" >> $GITHUB_ENV
-
-    - name: Install curl with vcpkg (Windows)
-      if: matrix.os == 'windows-latest'
-      shell: bash
-      run: |
-        echo "Installing curl with vcpkg..."
-        ${VCPKG_ROOT}/vcpkg install curl:x64-windows-static
-        echo "vcpkg curl installation complete"
 
     # --- Inject our custom files ---
     - name: Copy custom files to llama.cpp directory
