@@ -1,4 +1,4 @@
-# --- FILE: .github/workflows/release-builder.yml (FINAL & FULLY ROBUST v3) ---
+# --- FILE: .github/workflows/release-builder.yml (v1.0.38 - Professional Windows Fix) ---
 name: Build and Release Pre-compiled Libraries
 
 # FIX FOR LINUX: Add permissions block to allow uploading to releases.
@@ -34,6 +34,10 @@ jobs:
             lib_name: libnewrllama.dylib
 
     runs-on: ${{ matrix.os }}
+    
+    # Professional Windows configuration
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-windows-static
 
     steps:
     - name: Checkout repository
@@ -48,20 +52,19 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential cmake curl libcurl4-openssl-dev
 
-    # FIX FOR WINDOWS v1.0.21: Use PowerShell for better path handling
-    - name: Setup vcpkg and install curl (Windows)
+    # PROFESSIONAL FIX: Use official setup-vcpkg action with caching
+    - name: Setup vcpkg (Windows - Professional)
+      if: runner.os == 'Windows'
+      uses: microsoft/setup-vcpkg@v1
+      with:
+        triplet: ${{ env.VCPKG_DEFAULT_TRIPLET }}
+        
+    - name: Install curl with vcpkg (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        Write-Host "##[group]Setting up vcpkg and installing curl..."
-        Set-Location $env:GITHUB_WORKSPACE
-        git clone https://github.com/microsoft/vcpkg.git vcpkg
-        Set-Location vcpkg
-        .\bootstrap-vcpkg.bat
-        .\vcpkg.exe install curl:x64-windows-static
-        $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg"
-        Write-Host "VCPKG_ROOT=$vcpkgRoot"
-        "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        Write-Host "##[group]Installing curl with vcpkg..."
+        vcpkg install curl:${{ env.VCPKG_DEFAULT_TRIPLET }}
         Write-Host "##[endgroup]"
 
     # --- Inject our custom files ---
@@ -88,12 +91,15 @@ jobs:
         # Base CMake arguments
         CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF"
         
-        # Platform-specific arguments
-        if [[ "${{ runner.os }}" == "Windows" ]]; then
-          # Convert Windows path separators for CMake
-          VCPKG_CMAKE_PATH=$(echo "$VCPKG_ROOT" | sed 's|\\|/|g')/scripts/buildsystems/vcpkg.cmake
-          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=\"$VCPKG_CMAKE_PATH\" -DVCPKG_TARGET_TRIPLET=x64-windows-static"
-        elif [[ "${{ runner.os }}" == "macOS" ]]; then
+        # Platform-specific arguments with FIXED path handling
+        OS_NAME="${{ runner.os }}"
+        if [[ "$OS_NAME" == "Windows" ]]; then
+          # PROFESSIONAL FIX: No quotes in variable, proper path conversion
+          VCPKG_CMAKE_PATH=$(cygpath -u "$VCPKG_ROOT")/scripts/buildsystems/vcpkg.cmake
+          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=$VCPKG_CMAKE_PATH -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_DEFAULT_TRIPLET }}"
+          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
+          echo "🔧 Windows: Using vcpkg toolchain at $VCPKG_CMAKE_PATH"
+        elif [[ "$OS_NAME" == "macOS" ]]; then
           # Enable Metal GPU acceleration only for Apple Silicon (macos-14)
           if [[ "${{ matrix.os }}" == "macos-14" ]]; then
             CMAKE_ARGS="$CMAKE_ARGS -DLLAMA_ACCELERATE=ON -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON"
@@ -113,13 +119,13 @@ jobs:
         cmake .. $CMAKE_ARGS
         
         echo "Building target 'newrllama'..."
-        # CRITICAL FIX for Windows: Use /m for MSBuild, -j for make/ninja
-        if [[ "${{ runner.os }}" == "Windows" ]]; then
-          cmake --build . --config Release --target newrllama --verbose -- /m:2
+        # PROFESSIONAL BUILD: Auto-detect CPU cores and use proper flags
+        if [[ "$OS_NAME" == "Windows" ]]; then
+          cmake --build . --config Release --target newrllama --parallel
         else
-          cmake --build . --config Release --target newrllama --verbose -- -j 2
+          cmake --build . --config Release --target newrllama --parallel
         fi
-        
+
     # --- GLUE-CODE ARCHITECTURE: Verify static library symbol completeness ---
     - name: Verify Static Library Symbols
       shell: bash
