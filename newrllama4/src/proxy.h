@@ -41,6 +41,10 @@ struct newrllama_api_ptrs {
     decltype(&newrllama_token_get_score) token_get_score;
     decltype(&newrllama_token_is_eog) token_is_eog;
     decltype(&newrllama_token_is_control) token_is_control;
+    
+    // Model download functions
+    decltype(&newrllama_download_model) download_model;
+    decltype(&newrllama_resolve_model) resolve_model;
 };
 
 // 声明一个全局的函数指针结构体实例

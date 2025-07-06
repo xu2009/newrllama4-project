@@ -391,4 +391,54 @@ SEXP r_tokenize_test(SEXP model_ptr) {
     return tokens_r;
 }
 
+// --- Model Download Functions ---
+
+extern "C" SEXP c_r_download_model(SEXP model_url_sexp, SEXP output_path_sexp, SEXP show_progress_sexp) {
+    if (TYPEOF(model_url_sexp) != STRSXP || LENGTH(model_url_sexp) != 1) {
+        stop("Expected character string for model_url");
+    }
+    if (TYPEOF(output_path_sexp) != STRSXP || LENGTH(output_path_sexp) != 1) {
+        stop("Expected character string for output_path");
+    }
+    if (TYPEOF(show_progress_sexp) != LGLSXP || LENGTH(show_progress_sexp) != 1) {
+        stop("Expected logical value for show_progress");
+    }
+    
+    const char* model_url = CHAR(STRING_ELT(model_url_sexp, 0));
+    const char* output_path = CHAR(STRING_ELT(output_path_sexp, 0));
+    bool show_progress = LOGICAL(show_progress_sexp)[0];
+    
+    const char* error_message = nullptr;
+    newrllama_error_code code = newrllama_api.download_model(model_url, output_path, show_progress, &error_message);
+    
+    check_error(code, error_message);
+    return R_NilValue;
+}
+
+extern "C" SEXP c_r_resolve_model(SEXP model_url_sexp) {
+    if (TYPEOF(model_url_sexp) != STRSXP || LENGTH(model_url_sexp) != 1) {
+        stop("Expected character string for model_url");
+    }
+    
+    const char* model_url = CHAR(STRING_ELT(model_url_sexp, 0));
+    char* resolved_path = nullptr;
+    const char* error_message = nullptr;
+    
+    newrllama_error_code code = newrllama_api.resolve_model(model_url, &resolved_path, &error_message);
+    check_error(code, error_message);
+    
+    if (!resolved_path) {
+        stop("Failed to resolve model path");
+    }
+    
+    SEXP result = PROTECT(Rf_allocVector(STRSXP, 1));
+    SET_STRING_ELT(result, 0, Rf_mkChar(resolved_path));
+    
+    // Free the allocated string
+    newrllama_api.free_string(resolved_path);
+    
+    UNPROTECT(1);
+    return result;
+}
+
 } 

@@ -21,22 +21,34 @@ backend_free <- function() {
   }
 }
 
-#' Load a language model
+#' Load a language model (with smart download)
 #'
-#' @param model_path Path to the GGUF model file
+#' @param model_path Path to the GGUF model file or a URL (supports hf://, ollama://, https://, etc.)
 #' @param n_gpu_layers Number of layers to offload to GPU (default: 0)
 #' @param use_mmap Whether to use memory mapping (default: TRUE)
 #' @param use_mlock Whether to use memory locking (default: FALSE)
+#' @param show_progress Whether to show download progress for URLs (default: TRUE)
 #' @return A model object (external pointer)
 #' @export
-model_load <- function(model_path, n_gpu_layers = 0L, use_mmap = TRUE, use_mlock = FALSE) {
+#' @examples
+#' \dontrun{
+#' # Load local model
+#' model <- model_load("/path/to/model.gguf")
+#' 
+#' # Auto-download from URL
+#' model <- model_load("https://example.com/model.gguf")
+#' 
+#' # Auto-download from Hugging Face (when implemented)
+#' # model <- model_load("hf://microsoft/DialoGPT-medium")
+#' }
+model_load <- function(model_path, n_gpu_layers = 0L, use_mmap = TRUE, use_mlock = FALSE, show_progress = TRUE) {
   .ensure_backend_loaded()
-  if (!file.exists(model_path)) {
-    stop("Model file does not exist: ", model_path, call. = FALSE)
-  }
+  
+  # Resolve model path (download if needed)
+  resolved_path <- .resolve_model_path(model_path, show_progress)
   
   .Call("c_r_model_load", 
-        as.character(model_path),
+        as.character(resolved_path),
         as.integer(n_gpu_layers), 
         as.logical(use_mmap),
         as.logical(use_mlock))
@@ -196,4 +208,167 @@ tokenize_test <- function(model) {
   }
   
   .Call("c_r_tokenize_test", model)
+}
+
+#' Download a model manually
+#'
+#' @param model_url URL of the model to download (supports https://, hf://, ollama://, etc.)
+#' @param output_path Local path where to save the model (optional, will use cache if not provided)
+#' @param show_progress Whether to show download progress (default: TRUE)
+#' @return The path where the model was saved
+#' @export
+#' @examples
+#' \dontrun{
+#' # Download to specific location
+#' download_model("https://example.com/model.gguf", "~/models/my_model.gguf")
+#' 
+#' # Download to cache (path will be returned)
+#' cached_path <- download_model("https://example.com/model.gguf")
+#' }
+download_model <- function(model_url, output_path = NULL, show_progress = TRUE) {
+  .ensure_backend_loaded()
+  
+  if (is.null(output_path)) {
+    output_path <- .get_cache_path(model_url)
+  }
+  
+  # Create output directory if it doesn't exist
+  output_dir <- dirname(output_path)
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
+  
+  message("Downloading model from: ", model_url)
+  message("Saving to: ", output_path)
+  
+  .Call("c_r_download_model", 
+        as.character(model_url),
+        as.character(output_path),
+        as.logical(show_progress))
+  
+  if (!file.exists(output_path)) {
+    stop("Download failed: file not found after download", call. = FALSE)
+  }
+  
+  message("Model downloaded successfully!")
+  return(output_path)
+}
+
+#' Get the model cache directory
+#'
+#' @return Path to the directory where models are cached
+#' @export
+get_model_cache_dir <- function() {
+  return(.get_model_cache_dir())
+}
+
+# --- Helper Functions for Model Download ---
+
+#' Check if a string represents a URL
+#' @param path The path/URL to check
+#' @return TRUE if it's a URL, FALSE otherwise
+.is_url <- function(path) {
+  if (is.null(path) || length(path) == 0 || nchar(path) == 0) {
+    return(FALSE)
+  }
+  
+  # Check for common URL protocols
+  url_patterns <- c("^https?://", "^hf://", "^huggingface://", "^ollama://", 
+                    "^ms://", "^modelscope://", "^github://", "^s3://", "^file://")
+  
+  for (pattern in url_patterns) {
+    if (grepl(pattern, path, ignore.case = TRUE)) {
+      return(TRUE)
+    }
+  }
+  
+  return(FALSE)
+}
+
+#' Get cache directory for models
+#' @return Path to the model cache directory
+.get_model_cache_dir <- function() {
+  cache_dir <- tools::R_user_dir("newrllama4", which = "cache")
+  models_dir <- file.path(cache_dir, "models")
+  
+  if (!dir.exists(models_dir)) {
+    dir.create(models_dir, recursive = TRUE)
+  }
+  
+  return(models_dir)
+}
+
+#' Generate cache path for a model URL
+#' @param model_url The model URL
+#' @return Local cache path for the model
+.get_cache_path <- function(model_url) {
+  cache_dir <- .get_model_cache_dir()
+  
+  # Extract filename from URL
+  # For most URLs, this will be the last part after the final /
+  filename <- basename(model_url)
+  
+  # If no extension or generic name, add .gguf
+  if (!grepl("\\.(gguf|bin)$", filename, ignore.case = TRUE)) {
+    if (filename == "" || filename == model_url) {
+      # Generate a reasonable filename from the URL
+      clean_url <- gsub("[^a-zA-Z0-9._-]", "_", model_url)
+      filename <- paste0(substr(clean_url, 1, 50), ".gguf")
+    } else {
+      filename <- paste0(filename, ".gguf")
+    }
+  }
+  
+  return(file.path(cache_dir, filename))
+}
+
+#' Download a model to cache
+#' @param model_url The model URL
+#' @param cache_path The local cache path
+#' @param show_progress Whether to show download progress
+.download_model_to_cache <- function(model_url, cache_path, show_progress = TRUE) {
+  .ensure_backend_loaded()
+  
+  message("Downloading model from: ", model_url)
+  message("Saving to: ", cache_path)
+  
+  .Call("c_r_download_model", 
+        as.character(model_url),
+        as.character(cache_path),
+        as.logical(show_progress))
+  
+  if (!file.exists(cache_path)) {
+    stop("Download failed: file not found after download", call. = FALSE)
+  }
+  
+  message("Model downloaded successfully!")
+}
+
+#' Resolve model path (download if needed)
+#' @param model_path The model path or URL
+#' @param show_progress Whether to show download progress
+#' @return The resolved local file path
+.resolve_model_path <- function(model_path, show_progress = TRUE) {
+  # If it's a local file that exists, return as-is
+  if (!.is_url(model_path) && file.exists(model_path)) {
+    return(model_path)
+  }
+  
+  # If it's a URL, handle download
+  if (.is_url(model_path)) {
+    cache_path <- .get_cache_path(model_path)
+    
+    # If cached version exists, use it
+    if (file.exists(cache_path)) {
+      message("Using cached model: ", cache_path)
+      return(cache_path)
+    }
+    
+    # Download to cache
+    .download_model_to_cache(model_path, cache_path, show_progress)
+    return(cache_path)
+  }
+  
+  # If it's neither a URL nor an existing file, it's an error
+  stop("Model file does not exist and is not a valid URL: ", model_path, call. = FALSE)
 } 

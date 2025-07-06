@@ -56,6 +56,10 @@ NEWRLLAMA_API int32_t newrllama_token_fim_pre(newrllama_model_handle model);
 NEWRLLAMA_API int32_t newrllama_token_fim_mid(newrllama_model_handle model);
 NEWRLLAMA_API int32_t newrllama_token_fim_suf(newrllama_model_handle model);
 
+// Model download and resolution functions
+NEWRLLAMA_API newrllama_error_code newrllama_download_model(const char* model_url, const char* output_path, bool show_progress, const char** error_message);
+NEWRLLAMA_API newrllama_error_code newrllama_resolve_model(const char* model_url, char** resolved_path, const char** error_message);
+
 #ifdef __cplusplus
 }
 #endif

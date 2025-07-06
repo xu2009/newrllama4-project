@@ -348,4 +348,206 @@ NEWRLLAMA_API int32_t newrllama_token_fim_mid(newrllama_model_handle model) {
 
 NEWRLLAMA_API int32_t newrllama_token_fim_suf(newrllama_model_handle model) { 
     return model ? llama_vocab_fim_suf(llama_model_get_vocab(model)) : -1; 
+}
+
+#ifdef LLAMA_USE_CURL
+#include <curl/curl.h>
+#include <filesystem>
+#include <fstream>
+#include <chrono>
+#include <sstream>
+#include <iostream>
+#include <iomanip>
+
+// Helper functions for model downloading
+static bool string_starts_with(const std::string& str, const std::string& prefix) {
+    return str.size() >= prefix.size() && str.compare(0, prefix.size(), prefix) == 0;
+}
+
+static std::string basename(const std::string& path) {
+    const size_t pos = path.find_last_of("/\\");
+    return (pos == std::string::npos) ? path : path.substr(pos + 1);
+}
+
+static int rm_until_substring(std::string& model_, const std::string& substring) {
+    const std::string::size_type pos = model_.find(substring);
+    if (pos == std::string::npos) {
+        return 1;
+    }
+    model_ = model_.substr(pos + substring.size());
+    return 0;
+}
+
+// Progress callback for curl
+struct progress_data {
+    std::chrono::steady_clock::time_point start_time;
+    size_t file_size;
+    bool printed;
+};
+
+static size_t write_data(void *ptr, size_t size, size_t nmemb, FILE *stream) {
+    return fwrite(ptr, size, nmemb, stream);
+}
+
+static int update_progress(void *ptr, curl_off_t total_to_download, curl_off_t now_downloaded, curl_off_t, curl_off_t) {
+    if (!ptr) return 0;
+    
+    progress_data* data = static_cast<progress_data*>(ptr);
+    if (total_to_download <= 0) return 0;
+    
+    total_to_download += data->file_size;
+    const curl_off_t now_downloaded_plus_file_size = now_downloaded + data->file_size;
+    const curl_off_t percentage = (now_downloaded_plus_file_size * 100) / total_to_download;
+    
+    const auto now = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> elapsed_seconds = now - data->start_time;
+    const double speed = now_downloaded / elapsed_seconds.count();
+    
+    if (percentage % 5 == 0 || now_downloaded_plus_file_size == total_to_download) {
+        std::cout << "\rDownload progress: " << percentage << "% (" 
+                  << now_downloaded_plus_file_size << "/" << total_to_download << " bytes)"
+                  << std::flush;
+        data->printed = true;
+    }
+    
+    return 0;
+}
+
+// HTTP download function
+static int download_file(const std::string& url, const std::string& output_file, bool show_progress) {
+    CURL* curl = curl_easy_init();
+    if (!curl) return 1;
+    
+    FILE* fp = fopen(output_file.c_str(), "wb");
+    if (!fp) {
+        curl_easy_cleanup(curl);
+        return 1;
+    }
+    
+    progress_data data = {};
+    data.start_time = std::chrono::steady_clock::now();
+    data.file_size = 0;
+    data.printed = false;
+    
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+    
+    if (show_progress) {
+        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+        curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &data);
+        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, update_progress);
+    }
+    
+    CURLcode res = curl_easy_perform(curl);
+    fclose(fp);
+    
+    if (res != CURLE_OK) {
+        curl_easy_cleanup(curl);
+        std::filesystem::remove(output_file);
+        return 1;
+    }
+    
+    if (show_progress && data.printed) {
+        std::cout << "\nDownload completed!" << std::endl;
+    }
+    
+    curl_easy_cleanup(curl);
+    return 0;
+}
+
+// Model resolution function
+static int resolve_model_url(std::string& model_url, const std::string& output_file) {
+    if (string_starts_with(model_url, "file://") || std::filesystem::exists(model_url)) {
+        rm_until_substring(model_url, "://");
+        return 0;
+    }
+    
+    if (string_starts_with(model_url, "https://") || string_starts_with(model_url, "http://")) {
+        return download_file(model_url, output_file, true);
+    }
+    
+    // For other protocols (hf://, ollama://, etc.), we need full implementation
+    // For now, return error for unsupported protocols
+    return 1;
+}
+
+#endif // LLAMA_USE_CURL
+
+// API implementations
+NEWRLLAMA_API newrllama_error_code newrllama_download_model(const char* model_url, const char* output_path, bool show_progress, const char** error_message) {
+#ifdef LLAMA_USE_CURL
+    try {
+        if (!model_url || !output_path) {
+            set_error(error_message, "Invalid parameters: model_url and output_path cannot be null");
+            return NEWRLLAMA_ERROR;
+        }
+        
+        std::string url(model_url);
+        std::string output(output_path);
+        
+        // Create output directory if it doesn't exist
+        std::filesystem::path output_dir = std::filesystem::path(output).parent_path();
+        if (!output_dir.empty() && !std::filesystem::exists(output_dir)) {
+            std::filesystem::create_directories(output_dir);
+        }
+        
+        if (resolve_model_url(url, output) != 0) {
+            set_error(error_message, "Failed to download model from URL: " + std::string(model_url));
+            return NEWRLLAMA_ERROR;
+        }
+        
+        return NEWRLLAMA_SUCCESS;
+    } catch (const std::exception& e) {
+        set_error(error_message, std::string("Download error: ") + e.what());
+        return NEWRLLAMA_ERROR;
+    }
+#else
+    set_error(error_message, "Model download not supported: built without curl");
+    return NEWRLLAMA_ERROR;
+#endif
+}
+
+NEWRLLAMA_API newrllama_error_code newrllama_resolve_model(const char* model_url, char** resolved_path, const char** error_message) {
+    try {
+        if (!model_url || !resolved_path) {
+            set_error(error_message, "Invalid parameters: model_url and resolved_path cannot be null");
+            return NEWRLLAMA_ERROR;
+        }
+        
+        std::string url(model_url);
+        
+        // Check if it's a local file
+        if (string_starts_with(url, "file://")) {
+            rm_until_substring(url, "://");
+            *resolved_path = string_to_c_str(url);
+            return NEWRLLAMA_SUCCESS;
+        }
+        
+        if (std::filesystem::exists(url)) {
+            *resolved_path = string_to_c_str(url);
+            return NEWRLLAMA_SUCCESS;
+        }
+        
+        // For URLs, we need to determine cache path
+        std::string cache_dir = std::filesystem::temp_directory_path() / "newrllama_models";
+        std::string filename = basename(url);
+        if (filename.empty()) {
+            filename = "model.gguf";
+        }
+        
+        std::string cache_path = cache_dir + "/" + filename;
+        
+        // Create cache directory
+        std::filesystem::create_directories(cache_dir);
+        
+        *resolved_path = string_to_c_str(cache_path);
+        return NEWRLLAMA_SUCCESS;
+        
+    } catch (const std::exception& e) {
+        set_error(error_message, std::string("Model resolution error: ") + e.what());
+        return NEWRLLAMA_ERROR;
+    }
 } 

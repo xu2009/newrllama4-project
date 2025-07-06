@@ -61,6 +61,10 @@ bool newrllama_api_init(void* handle) {
         LOAD_SYMBOL(handle, token_is_eog);
         LOAD_SYMBOL(handle, token_is_control);
         
+        // 加载模型下载函数
+        LOAD_SYMBOL(handle, download_model);
+        LOAD_SYMBOL(handle, resolve_model);
+        
         return true;
         
     } catch (const std::exception& e) {

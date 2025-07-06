@@ -21,3 +21,7 @@ export(generate_parallel)
 
 # Export debug functions
 export(tokenize_test)
+
+# Export model download functions
+export(download_model)
+export(get_model_cache_dir)

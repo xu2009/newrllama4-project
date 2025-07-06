@@ -37,8 +37,24 @@ if(APPLE)
     endif()
 endif()
 
-# Disable problematic features for clean builds
-set(LLAMA_CURL OFF CACHE BOOL "Disable curl dependency for simplicity" FORCE)
+# Enable model download functionality with curl
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(CURL QUIET libcurl)
+endif()
+
+if(NOT CURL_FOUND)
+    find_package(CURL QUIET)
+endif()
+
+if(CURL_FOUND)
+    set(LLAMA_CURL ON CACHE BOOL "Enable curl for model downloading" FORCE)
+    message(STATUS "Found CURL: enabling model download functionality")
+else()
+    set(LLAMA_CURL OFF CACHE BOOL "CURL not found, disabling model download" FORCE)
+    message(WARNING "CURL not found: model download functionality will be disabled")
+endif()
+
 set(GGML_ALL_WARNINGS OFF CACHE BOOL "Disable warnings for clean build" FORCE)
 
 # Include original llama.cpp build logic (we ARE the CMakeLists.txt now)
@@ -52,8 +68,7 @@ if (LLAMA_BUILD_COMMON)
     add_subdirectory(common)
 endif()
 
-# Find required system libraries
-find_package(CURL REQUIRED)
+# Note: CURL is already found above conditionally
 
 # Check for BLAS availability on macOS
 if(APPLE)
@@ -223,7 +238,16 @@ else()
 endif()
 
 # Link system libraries and frameworks (common for both strategies)
-target_link_libraries(newrllama PRIVATE CURL::libcurl)
+# Link CURL if available
+if(CURL_FOUND)
+    if(TARGET CURL::libcurl)
+        target_link_libraries(newrllama PRIVATE CURL::libcurl)
+    elseif(CURL_LIBRARIES)
+        target_link_libraries(newrllama PRIVATE ${CURL_LIBRARIES})
+        target_include_directories(newrllama PRIVATE ${CURL_INCLUDE_DIRS})
+    endif()
+    target_compile_definitions(newrllama PRIVATE LLAMA_USE_CURL)
+endif()
 
 # Link essential system libraries for all platforms
 if(UNIX)
