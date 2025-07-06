@@ -532,7 +532,8 @@ NEWRLLAMA_API newrllama_error_code newrllama_resolve_model(const char* model_url
         }
         
         // For URLs, we need to determine cache path
-        std::string cache_dir = std::filesystem::temp_directory_path() / "newrllama_models";
+        std::filesystem::path temp_path = std::filesystem::temp_directory_path() / "newrllama_models";
+        std::string cache_dir = temp_path.string();
         std::string filename = newrllama_basename(url);
         if (filename.empty()) {
             filename = "model.gguf";
