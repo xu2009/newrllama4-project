@@ -359,17 +359,17 @@ NEWRLLAMA_API int32_t newrllama_token_fim_suf(newrllama_model_handle model) {
 #include <iostream>
 #include <iomanip>
 
-// Helper functions for model downloading
-static bool string_starts_with(const std::string& str, const std::string& prefix) {
+// Helper functions for model downloading (using newrllama_ prefix to avoid conflicts)
+static bool newrllama_string_starts_with(const std::string& str, const std::string& prefix) {
     return str.size() >= prefix.size() && str.compare(0, prefix.size(), prefix) == 0;
 }
 
-static std::string basename(const std::string& path) {
+static std::string newrllama_basename(const std::string& path) {
     const size_t pos = path.find_last_of("/\\");
     return (pos == std::string::npos) ? path : path.substr(pos + 1);
 }
 
-static int rm_until_substring(std::string& model_, const std::string& substring) {
+static int newrllama_rm_until_substring(std::string& model_, const std::string& substring) {
     const std::string::size_type pos = model_.find(substring);
     if (pos == std::string::npos) {
         return 1;
@@ -460,12 +460,12 @@ static int download_file(const std::string& url, const std::string& output_file,
 
 // Model resolution function
 static int resolve_model_url(std::string& model_url, const std::string& output_file) {
-    if (string_starts_with(model_url, "file://") || std::filesystem::exists(model_url)) {
-        rm_until_substring(model_url, "://");
+    if (newrllama_string_starts_with(model_url, "file://") || std::filesystem::exists(model_url)) {
+        newrllama_rm_until_substring(model_url, "://");
         return 0;
     }
     
-    if (string_starts_with(model_url, "https://") || string_starts_with(model_url, "http://")) {
+    if (newrllama_string_starts_with(model_url, "https://") || newrllama_string_starts_with(model_url, "http://")) {
         return download_file(model_url, output_file, true);
     }
     
@@ -520,8 +520,8 @@ NEWRLLAMA_API newrllama_error_code newrllama_resolve_model(const char* model_url
         std::string url(model_url);
         
         // Check if it's a local file
-        if (string_starts_with(url, "file://")) {
-            rm_until_substring(url, "://");
+        if (newrllama_string_starts_with(url, "file://")) {
+            newrllama_rm_until_substring(url, "://");
             *resolved_path = string_to_c_str(url);
             return NEWRLLAMA_SUCCESS;
         }
@@ -533,7 +533,7 @@ NEWRLLAMA_API newrllama_error_code newrllama_resolve_model(const char* model_url
         
         // For URLs, we need to determine cache path
         std::string cache_dir = std::filesystem::temp_directory_path() / "newrllama_models";
-        std::string filename = basename(url);
+        std::string filename = newrllama_basename(url);
         if (filename.empty()) {
             filename = "model.gguf";
         }
