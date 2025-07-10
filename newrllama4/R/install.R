@@ -1,8 +1,8 @@
 # --- FILE: newrllama4/R/install.R ---
 
 # Define library version and base URL
-.lib_version <- "1.0.45"
-.base_url <- "https://github.com/xu2009/newrllama4-project/releases/download/v1.0.45/"
+.lib_version <- "1.0.46"
+.base_url <- "https://github.com/xu2009/newrllama4-project/releases/download/v1.0.46/"
 
 # Get path for local library storage
 .lib_path <- function() {

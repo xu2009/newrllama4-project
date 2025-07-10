@@ -222,19 +222,23 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
     std::vector<Client> clients(n_prompts); 
     
     try { 
-        // Phase 1: Initialize clients and process prompts 
+        // Phase 1: Process system prompt (empty in our case) in seq_id = 0
+        llama_kv_self_clear(ctx);
+        
+        // Phase 2: Initialize clients and process their prompts 
         llama_batch batch = llama_batch_init(n_ctx, 0, n_prompts); 
+        
         for (int i = 0; i < n_prompts; ++i) { 
             auto& C = clients[i]; 
             C.id = i; 
-            C.seq_id = i + 1;  // Reserve seq_id 0 for system prompt 
+            C.seq_id = i + 1;  // Use seq_id 1, 2, 3... (0 reserved for system)
             C.input = std::string(prompts[i]); 
-            C.prompt = C.input;  // Can be extended with system prompt later 
+            C.prompt = C.input; 
             C.prompt_tokens = helper_tokenize(model, C.prompt, true); 
             C.n_prompt = C.prompt_tokens.size(); 
             C.t_start_prompt = ggml_time_us(); 
             
-            // Add prompt tokens to batch with correct position tracking
+            // Add prompt tokens to batch - each in their own sequence
             for (size_t j = 0; j < C.prompt_tokens.size(); ++j) { 
                 common_batch_add(batch, C.prompt_tokens[j], j, {C.seq_id}, j == C.prompt_tokens.size() - 1); 
             } 
@@ -242,9 +246,6 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
             C.smpl = common_sampler_init(model, sparams); 
             if (!C.smpl) throw std::runtime_error("Sampler init failed for client " + std::to_string(i)); 
         } 
-        
-        // Clear KV cache and decode all prompts 
-        llama_kv_self_clear(ctx); 
         
         // Process batch in chunks to avoid memory issues 
         int32_t n_batch = std::min(512, n_ctx); 
@@ -276,10 +277,8 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
         } 
         llama_batch_free(batch); 
         
-        // Initialize each client's sequence separately (no copying from seq 0)
+        // Each client's prompt is now processed in their own independent sequence
         for (auto& C : clients) { 
-            // Each sequence should be independent - don't copy from seq 0
-            // The prompt has already been processed in their own seq_id
             C.n_past = C.n_prompt; 
         } 
         
