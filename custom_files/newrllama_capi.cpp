@@ -1,6 +1,7 @@
 #define NEWRLLAMA_BUILD_DLL
 #include "newrllama_capi.h"
 #include "llama.h"
+#include "ggml.h"
 #include "common/common.h"
 #include "common/sampling.h"
 #include <string>
@@ -203,72 +204,220 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
         int id; 
         llama_seq_id seq_id; 
         std::vector<llama_token> prompt_tokens; 
-        size_t n_decoded = 0; 
+        int32_t n_past = 0; 
+        int32_t n_prompt = 0; 
+        int32_t n_decoded = 0; 
+        int32_t i_batch = -1; 
+        std::string input; 
+        std::string prompt; 
         std::string response; 
         llama_token sampled = 0; 
         common_sampler* smpl = nullptr; 
         bool finished = false; 
+        int64_t t_start_prompt = 0; 
+        int64_t t_start_gen = 0; 
     }; 
+    const int n_ctx = llama_n_ctx(ctx); 
+    int32_t n_cache_miss = 0; 
     std::vector<Client> clients(n_prompts); 
+    
     try { 
+        // Phase 1: Initialize clients and process prompts 
+        llama_batch batch = llama_batch_init(n_ctx, 0, n_prompts); 
         for (int i = 0; i < n_prompts; ++i) { 
             auto& C = clients[i]; 
             C.id = i; 
-            C.seq_id = i; 
-            C.prompt_tokens = helper_tokenize(model, std::string(prompts[i]), true); 
+            C.seq_id = i + 1;  // Reserve seq_id 0 for system prompt 
+            C.input = std::string(prompts[i]); 
+            C.prompt = C.input;  // Can be extended with system prompt later 
+            C.prompt_tokens = helper_tokenize(model, C.prompt, true); 
+            C.n_prompt = C.prompt_tokens.size(); 
+            C.t_start_prompt = ggml_time_us(); 
+            
+            // Add prompt tokens to batch 
+            for (size_t j = 0; j < C.prompt_tokens.size(); ++j) { 
+                common_batch_add(batch, C.prompt_tokens[j], j, {C.seq_id}, false); 
+            } 
+            // Only request logits for the last token of each prompt 
+            if (C.prompt_tokens.size() > 0) { 
+                batch.logits[batch.n_tokens - 1] = true; 
+            } 
+            
             C.smpl = common_sampler_init(model, sparams); 
             if (!C.smpl) throw std::runtime_error("Sampler init failed for client " + std::to_string(i)); 
         } 
+        
+        // Clear KV cache and decode all prompts 
         llama_kv_self_clear(ctx); 
+        
+        // Process batch in chunks to avoid memory issues 
+        int32_t n_batch = std::min(512, n_ctx); 
+        for (int32_t i = 0; i < (int32_t)batch.n_tokens; i += n_batch) { 
+            const int32_t n_tokens = std::min(n_batch, (int32_t)(batch.n_tokens - i)); 
+            
+            llama_batch batch_view = { 
+                n_tokens, 
+                batch.token + i, 
+                nullptr, 
+                batch.pos + i, 
+                batch.n_seq_id + i, 
+                batch.seq_id + i, 
+                batch.logits + i, 
+            }; 
+            
+            const int ret = llama_decode(ctx, batch_view); 
+            if (ret != 0) { 
+                if (n_batch == 1 || ret < 0) { 
+                    llama_batch_free(batch); 
+                    throw std::runtime_error("Failed to decode prompt batch, n_batch = " + std::to_string(n_batch) + ", ret = " + std::to_string(ret)); 
+                } 
+                // Retry with smaller batch size 
+                n_cache_miss += 1; 
+                n_batch /= 2; 
+                i -= n_batch; 
+                continue; 
+            } 
+        } 
+        llama_batch_free(batch); 
+        
+        // Copy system sequence KV cache to all parallel sequences 
+        for (auto& C : clients) { 
+            llama_kv_self_seq_cp(ctx, 0, C.seq_id, -1, -1); 
+            C.n_past = C.n_prompt; 
+        } 
+        
+        // Phase 2: Generation loop 
         int active = n_prompts; 
         while (active > 0) { 
-            llama_batch batch = llama_batch_init(512, 0, active); 
-            int batch_idx = 0; 
+            batch = llama_batch_init(n_ctx, 0, active); 
+            std::vector<int> batch_client_ids; 
+            batch_client_ids.reserve(active); 
+            
+            // Add tokens for active clients 
             for (auto& C : clients) { 
                 if (C.finished) continue; 
-                if (C.n_decoded == 0) { 
-                    for (size_t k = 0; k < C.prompt_tokens.size() && batch.n_tokens < 512; ++k) { 
-                        common_batch_add(batch, C.prompt_tokens[k], k, {C.seq_id}, false); 
-                    } 
-                    C.n_decoded = C.prompt_tokens.size(); 
-                    if (batch.n_tokens > 0) batch.logits[batch.n_tokens - 1] = true; 
-                } else { 
-                    common_batch_add(batch, C.sampled, C.n_decoded, {C.seq_id}, true); 
-                    C.n_decoded++; 
-                } 
+                
+                C.i_batch = batch.n_tokens; 
+                common_batch_add(batch, C.sampled, C.n_past, {C.seq_id}, true); 
+                batch_client_ids.push_back(C.id); 
+                C.n_past++; 
             } 
+            
             if (batch.n_tokens == 0) { 
                 llama_batch_free(batch); 
                 break; 
             } 
-            if (llama_decode(ctx, batch) != 0) { 
-                llama_batch_free(batch); 
-                throw std::runtime_error("Parallel generation decoding failed."); 
-            } 
-            int current_batch_idx = 0; 
-            for (auto& C : clients) { 
-                if (C.finished) continue; 
-                if (batch.logits[current_batch_idx]) { 
-                    llama_token tok = common_sampler_sample(C.smpl, ctx, current_batch_idx); 
+            
+            // Process generation batch in chunks 
+            n_batch = std::min(512, n_ctx); 
+            for (int32_t i = 0; i < (int32_t)batch.n_tokens; i += n_batch) { 
+                const int32_t n_tokens = std::min(n_batch, (int32_t)(batch.n_tokens - i)); 
+                
+                llama_batch batch_view = { 
+                    n_tokens, 
+                    batch.token + i, 
+                    nullptr, 
+                    batch.pos + i, 
+                    batch.n_seq_id + i, 
+                    batch.seq_id + i, 
+                    batch.logits + i, 
+                }; 
+                
+                const int ret = llama_decode(ctx, batch_view); 
+                if (ret != 0) { 
+                    if (n_batch == 1 || ret < 0) { 
+                        llama_batch_free(batch); 
+                        throw std::runtime_error("Failed to decode generation batch, n_batch = " + std::to_string(n_batch) + ", ret = " + std::to_string(ret)); 
+                    } 
+                    n_cache_miss += 1; 
+                    n_batch /= 2; 
+                    i -= n_batch; 
+                    continue; 
+                } 
+                
+                // Sample for clients in this chunk 
+                for (int b = 0; b < (int)batch_client_ids.size(); ++b) { 
+                    Client& C = clients[batch_client_ids[b]]; 
+                    if (C.i_batch < i || C.i_batch >= i + n_tokens) continue; 
+                    
+                    const llama_token tok = common_sampler_sample(C.smpl, ctx, C.i_batch - i); 
                     common_sampler_accept(C.smpl, tok, true); 
-                    if (tok == eos_token || (params->max_tokens > 0 && C.response.length() >= (size_t)params->max_tokens) || llama_vocab_is_eog(vocab, tok)) { 
+                    
+                    if (C.n_decoded == 0) { 
+                        C.t_start_gen = ggml_time_us(); 
+                    } 
+                    
+                    const std::string token_str = common_token_to_piece(ctx, tok); 
+                    C.response += token_str; 
+                    C.sampled = tok; 
+                    C.n_decoded++; 
+                    
+                    // Check for completion conditions 
+                    bool should_stop = false; 
+                    if (tok == eos_token || llama_vocab_is_eog(vocab, tok)) { 
+                        should_stop = true; 
+                    } 
+                    if (params->max_tokens > 0 && C.n_decoded >= params->max_tokens) { 
+                        should_stop = true; 
+                    } 
+                    // Reverse prompt detection (stop at "User:" to prevent model continuing conversation) 
+                    if (C.n_decoded > 2 && C.response.find("User:") != std::string::npos) { 
+                        const size_t pos = C.response.find("User:"); 
+                        if (pos != std::string::npos) { 
+                            C.response = C.response.substr(0, pos); 
+                        } 
+                        should_stop = true; 
+                    } 
+                    
+                    if (should_stop) { 
                         C.finished = true; 
                         active--; 
-                    } else { 
-                        C.response += common_token_to_piece(ctx, tok); 
-                        C.sampled = tok; 
+                        // Clean up this sequence's KV cache but keep system prompt 
+                        llama_kv_self_seq_rm(ctx, C.seq_id, C.n_prompt, -1); 
                     } 
                 } 
-                current_batch_idx++; 
             } 
             llama_batch_free(batch); 
         } 
+        
+        // Phase 3: Performance statistics and cleanup
+        const auto t_main_end = ggml_time_us();
+        int32_t n_total_prompt = 0;
+        int32_t n_total_gen = 0;
+        
+        for (auto& C : clients) {
+            n_total_prompt += C.n_prompt;
+            n_total_gen += C.n_decoded;
+            
+            // Optional: Log per-client statistics (can be disabled for production)
+            if (C.t_start_gen > 0) {
+                const double time_prompt = (C.t_start_gen - C.t_start_prompt) / 1e6;
+                const double time_gen = (t_main_end - C.t_start_gen) / 1e6;
+                const double speed_prompt = C.n_prompt / time_prompt;
+                const double speed_gen = C.n_decoded / time_gen;
+                
+                // Note: This could be logged to a debug channel instead of error_message
+                // For now, we'll skip logging to avoid cluttering the output
+            }
+        }
+        
+        // Optional: Log overall statistics
+        const double total_time = (t_main_end - clients[0].t_start_prompt) / 1e6;
+        const double avg_speed = (n_total_prompt + n_total_gen) / total_time;
+        
+        // Note: Statistics logging could be added here if needed
+        // set_error(error_message, "Performance: " + std::to_string(avg_speed) + " t/s, cache misses: " + std::to_string(n_cache_miss));
+        
     } catch (const std::exception& e) { 
         for(auto& C : clients) if (C.smpl) common_sampler_free(C.smpl); 
         set_error(error_message, e.what()); 
         return NEWRLLAMA_ERROR; 
     } 
+    
+    // Clean up samplers
     for (auto& C : clients) if (C.smpl) common_sampler_free(C.smpl); 
+    
+    // Prepare results
     *results_out = new char*[n_prompts]; 
     for (int i = 0; i < n_prompts; ++i) { 
         (*results_out)[i] = string_to_c_str(clients[i].response); 

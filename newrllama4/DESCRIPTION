@@ -1,8 +1,8 @@
 Package: newrllama4
 Type: Package
 Title: R Interface to llama.cpp with Runtime Library Loading and Model Download
-Version: 1.0.41
-Date: 2025-07-06
+Version: 1.0.42
+Date: 2025-07-10
 Authors@R: person("yaoshengleo", "Developer", role = c("aut", "cre"), email = "yaoshengleo@example.com")
 Author: yaoshengleo Developer
 Maintainer: yaoshengleo Developer <yaoshengleo@example.com>
