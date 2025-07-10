@@ -234,13 +234,9 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
             C.n_prompt = C.prompt_tokens.size(); 
             C.t_start_prompt = ggml_time_us(); 
             
-            // Add prompt tokens to batch 
+            // Add prompt tokens to batch with correct position tracking
             for (size_t j = 0; j < C.prompt_tokens.size(); ++j) { 
-                common_batch_add(batch, C.prompt_tokens[j], j, {C.seq_id}, false); 
-            } 
-            // Only request logits for the last token of each prompt 
-            if (C.prompt_tokens.size() > 0) { 
-                batch.logits[batch.n_tokens - 1] = true; 
+                common_batch_add(batch, C.prompt_tokens[j], j, {C.seq_id}, j == C.prompt_tokens.size() - 1); 
             } 
             
             C.smpl = common_sampler_init(model, sparams); 
@@ -280,9 +276,10 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
         } 
         llama_batch_free(batch); 
         
-        // Copy system sequence KV cache to all parallel sequences 
+        // Initialize each client's sequence separately (no copying from seq 0)
         for (auto& C : clients) { 
-            llama_kv_self_seq_cp(ctx, 0, C.seq_id, -1, -1); 
+            // Each sequence should be independent - don't copy from seq 0
+            // The prompt has already been processed in their own seq_id
             C.n_past = C.n_prompt; 
         } 
         
@@ -345,10 +342,13 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
                 
                 // Sample for clients in this chunk 
                 for (int b = 0; b < (int)batch_client_ids.size(); ++b) { 
-                    Client& C = clients[batch_client_ids[b]]; 
+                    const int client_id = batch_client_ids[b];
+                    Client& C = clients[client_id]; 
                     if (C.i_batch < i || C.i_batch >= i + n_tokens) continue; 
                     
-                    const llama_token tok = common_sampler_sample(C.smpl, ctx, C.i_batch - i); 
+                    // Ensure we sample from the correct position for this specific client
+                    const int batch_pos = C.i_batch - i;
+                    const llama_token tok = common_sampler_sample(C.smpl, ctx, batch_pos); 
                     common_sampler_accept(C.smpl, tok, true); 
                     
                     if (C.n_decoded == 0) { 
@@ -383,8 +383,8 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
                     if (should_stop) { 
                         C.finished = true; 
                         active--; 
-                        // Clean up this sequence's KV cache but keep system prompt 
-                        llama_kv_self_seq_rm(ctx, C.seq_id, C.n_prompt, -1); 
+                        // Clean up this sequence's KV cache completely
+                        llama_kv_self_seq_rm(ctx, C.seq_id, 0, -1); 
                     } 
                 } 
             } 
