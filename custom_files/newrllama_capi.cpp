@@ -222,10 +222,10 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
     std::vector<Client> clients(n_prompts); 
     
     try { 
-        // Phase 1: Process system prompt (empty in our case) in seq_id = 0
+        // Phase 1: Clear KV cache and initialize clients
         llama_kv_self_clear(ctx);
         
-        // Phase 2: Initialize clients and tokenize all prompts
+        // Phase 2: Initialize clients and tokenize prompts
         for (int i = 0; i < n_prompts; ++i) { 
             auto& C = clients[i]; 
             C.id = i; 
@@ -240,62 +240,53 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
             if (!C.smpl) throw std::runtime_error("Sampler init failed for client " + std::to_string(i)); 
         }
         
-        // Phase 3: Process all prompts in seq_id=0 first (shared processing)
-        llama_batch batch = llama_batch_init(n_ctx, 0, 1);
-        
-        // Find the longest prompt to ensure we process enough tokens
-        size_t max_prompt_len = 0;
-        for (const auto& C : clients) {
-            max_prompt_len = std::max(max_prompt_len, C.prompt_tokens.size());
+        // Phase 3: Process each client's prompt INDEPENDENTLY in their own sequence
+        // This is the key fix - no mixing prompts in seq_id=0
+        for (auto& C : clients) {
+            llama_batch batch = llama_batch_init(n_ctx, 0, 1);
+            
+            // Process this client's prompt tokens in their own sequence
+            for (size_t j = 0; j < C.prompt_tokens.size(); ++j) {
+                common_batch_add(batch, C.prompt_tokens[j], j, {C.seq_id}, j == C.prompt_tokens.size() - 1);
+            }
+            
+            // Process this client's prompt
+            int32_t n_batch = std::min(512, n_ctx); 
+            for (int32_t i = 0; i < (int32_t)batch.n_tokens; i += n_batch) { 
+                const int32_t n_tokens = std::min(n_batch, (int32_t)(batch.n_tokens - i)); 
+                
+                llama_batch batch_view = { 
+                    n_tokens, 
+                    batch.token + i, 
+                    nullptr, 
+                    batch.pos + i, 
+                    batch.n_seq_id + i, 
+                    batch.seq_id + i, 
+                    batch.logits + i, 
+                }; 
+                
+                const int ret = llama_decode(ctx, batch_view); 
+                if (ret != 0) { 
+                    if (n_batch == 1 || ret < 0) { 
+                        llama_batch_free(batch); 
+                        throw std::runtime_error("Failed to decode prompt for client " + std::to_string(C.id) + ", n_batch = " + std::to_string(n_batch) + ", ret = " + std::to_string(ret)); 
+                    } 
+                    // Retry with smaller batch size 
+                    n_cache_miss += 1; 
+                    n_batch /= 2; 
+                    i -= n_batch; 
+                    continue; 
+                } 
+            } 
+            
+            llama_batch_free(batch);
+            C.n_past = C.n_prompt; 
         }
         
-        // Process all tokens from all prompts in seq_id=0
-        for (const auto& C : clients) {
-            for (size_t j = 0; j < C.prompt_tokens.size(); ++j) {
-                common_batch_add(batch, C.prompt_tokens[j], j, {0}, j == C.prompt_tokens.size() - 1);
-            }
-        } 
-        
-        // Process batch in chunks to avoid memory issues 
-        int32_t n_batch = std::min(512, n_ctx); 
-        for (int32_t i = 0; i < (int32_t)batch.n_tokens; i += n_batch) { 
-            const int32_t n_tokens = std::min(n_batch, (int32_t)(batch.n_tokens - i)); 
-            
-            llama_batch batch_view = { 
-                n_tokens, 
-                batch.token + i, 
-                nullptr, 
-                batch.pos + i, 
-                batch.n_seq_id + i, 
-                batch.seq_id + i, 
-                batch.logits + i, 
-            }; 
-            
-            const int ret = llama_decode(ctx, batch_view); 
-            if (ret != 0) { 
-                if (n_batch == 1 || ret < 0) { 
-                    llama_batch_free(batch); 
-                    throw std::runtime_error("Failed to decode prompt batch, n_batch = " + std::to_string(n_batch) + ", ret = " + std::to_string(ret)); 
-                } 
-                // Retry with smaller batch size 
-                n_cache_miss += 1; 
-                n_batch /= 2; 
-                i -= n_batch; 
-                continue; 
-            } 
-        } 
-        llama_batch_free(batch); 
-        
-        // Copy the decoded KV cache from seq_id=0 to each client's sequence
-        for (auto& C : clients) { 
-            llama_kv_self_seq_cp(ctx, 0, C.seq_id, -1, -1);
-            C.n_past = C.n_prompt; 
-        } 
-        
-        // Phase 2: Generation loop 
+        // Phase 4: Generation loop 
         int active = n_prompts; 
         while (active > 0) { 
-            batch = llama_batch_init(n_ctx, 0, active); 
+            llama_batch batch = llama_batch_init(n_ctx, 0, active); 
             std::vector<int> batch_client_ids; 
             batch_client_ids.reserve(active); 
             
@@ -320,7 +311,7 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
             } 
             
             // Process generation batch in chunks 
-            n_batch = std::min(512, n_ctx); 
+            int32_t n_batch = std::min(512, n_ctx); 
             for (int32_t i = 0; i < (int32_t)batch.n_tokens; i += n_batch) { 
                 const int32_t n_tokens = std::min(n_batch, (int32_t)(batch.n_tokens - i)); 
                 
@@ -397,7 +388,7 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
             llama_batch_free(batch); 
         } 
         
-        // Phase 3: Performance statistics and cleanup
+        // Phase 5: Performance statistics and cleanup
         const auto t_main_end = ggml_time_us();
         int32_t n_total_prompt = 0;
         int32_t n_total_gen = 0;
@@ -405,25 +396,7 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
         for (auto& C : clients) {
             n_total_prompt += C.n_prompt;
             n_total_gen += C.n_decoded;
-            
-            // Optional: Log per-client statistics (can be disabled for production)
-            if (C.t_start_gen > 0) {
-                const double time_prompt = (C.t_start_gen - C.t_start_prompt) / 1e6;
-                const double time_gen = (t_main_end - C.t_start_gen) / 1e6;
-                const double speed_prompt = C.n_prompt / time_prompt;
-                const double speed_gen = C.n_decoded / time_gen;
-                
-                // Note: This could be logged to a debug channel instead of error_message
-                // For now, we'll skip logging to avoid cluttering the output
-            }
         }
-        
-        // Optional: Log overall statistics
-        const double total_time = (t_main_end - clients[0].t_start_prompt) / 1e6;
-        const double avg_speed = (n_total_prompt + n_total_gen) / total_time;
-        
-        // Note: Statistics logging could be added here if needed
-        // set_error(error_message, "Performance: " + std::to_string(avg_speed) + " t/s, cache misses: " + std::to_string(n_cache_miss));
         
     } catch (const std::exception& e) { 
         for(auto& C : clients) if (C.smpl) common_sampler_free(C.smpl); 
