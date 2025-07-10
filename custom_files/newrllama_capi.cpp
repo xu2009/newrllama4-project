@@ -293,6 +293,14 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
             std::vector<int> batch_client_ids; 
             batch_client_ids.reserve(active); 
             
+            // Sample first token if needed, before batch setup
+            if (active == n_prompts) { // First generation loop
+                for (auto& C : clients) {
+                    C.sampled = common_sampler_sample(C.smpl, ctx, -1);
+                    common_sampler_accept(C.smpl, C.sampled, true);
+                }
+            }
+            
             // Add tokens for active clients 
             for (auto& C : clients) { 
                 if (C.finished) continue; 
@@ -347,25 +355,28 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
                         C.t_start_gen = ggml_time_us(); 
                     } 
                     
-                    const std::string token_str = common_token_to_piece(ctx, tok); 
+                    const std::string token_str = common_token_to_piece(ctx, tok);
                     C.response += token_str; 
                     C.sampled = tok; 
                     C.n_decoded++; 
                     
                     // Check for completion conditions 
                     bool should_stop = false; 
+                    
+                    // Only stop on EOS/EOG tokens
                     if (tok == eos_token || llama_vocab_is_eog(vocab, tok)) { 
                         should_stop = true; 
                     } 
+                    
+                    // Use decode count for max_tokens check (simpler and more reliable)
                     if (params->max_tokens > 0 && C.n_decoded >= params->max_tokens) { 
                         should_stop = true; 
                     } 
-                    // Reverse prompt detection (stop at "User:" to prevent model continuing conversation) 
-                    if (C.n_decoded > 2 && C.response.find("User:") != std::string::npos) { 
-                        const size_t pos = C.response.find("User:"); 
-                        if (pos != std::string::npos) { 
-                            C.response = C.response.substr(0, pos); 
-                        } 
+                    
+                    // Only stop on clear conversation endings
+                    if (C.n_decoded > 5 && 
+                        (C.response.find("\n\nUser:") != std::string::npos || 
+                         C.response.find("\n\nHuman:") != std::string::npos)) { 
                         should_stop = true; 
                     } 
                     
@@ -417,10 +428,20 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
     // Clean up samplers
     for (auto& C : clients) if (C.smpl) common_sampler_free(C.smpl); 
     
-    // Prepare results
+    // Prepare results with minimal cleaning
     *results_out = new char*[n_prompts]; 
     for (int i = 0; i < n_prompts; ++i) { 
-        (*results_out)[i] = string_to_c_str(clients[i].response); 
+        std::string clean_response = clients[i].response;
+        
+        // Only remove leading/trailing whitespace
+        while (!clean_response.empty() && isspace(clean_response.front())) {
+            clean_response = clean_response.substr(1);
+        }
+        while (!clean_response.empty() && isspace(clean_response.back())) {
+            clean_response.pop_back();
+        }
+        
+        (*results_out)[i] = string_to_c_str(clean_response); 
     } 
     return NEWRLLAMA_SUCCESS; 
 }
