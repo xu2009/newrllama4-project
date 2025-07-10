@@ -8,9 +8,9 @@ cat("=====================================================\n")
 backend_init()
 
 # Load model
-model_path <- "/Users/yaoshengleo/Desktop/gguf模型/Llama-3.2-1B-Instruct.Q8_0.gguf"
+model_path <- "/Users/yaoshengleo/Desktop/gguf模型/Llama-3.2-3B-Instruct-uncensored.IQ3_M.gguf"
 cat("Loading model:", basename(model_path), "\n")
-model <- model_load(model_path, n_gpu_layers = 0)
+model <- model_load(model_path, n_gpu_layers = 20)
 cat("Model loaded successfully\n")
 
 # Create context  
@@ -32,7 +32,9 @@ for (i in seq_along(test_prompts)) {
 # Run parallel generation test
 cat("\nRunning parallel generation (max_tokens=100)...\n")
 start_time <- Sys.time()
-results <- generate_parallel(ctx, test_prompts, max_tokens = 100)
+results <- generate_parallel(ctx, test_prompts, max_tokens = 50)
+
+results
 end_time <- Sys.time()
 
 generation_time <- as.numeric(end_time - start_time)

@@ -225,9 +225,7 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
         // Phase 1: Process system prompt (empty in our case) in seq_id = 0
         llama_kv_self_clear(ctx);
         
-        // Phase 2: Initialize clients and process their prompts 
-        llama_batch batch = llama_batch_init(n_ctx, 0, n_prompts); 
-        
+        // Phase 2: Initialize clients and tokenize all prompts
         for (int i = 0; i < n_prompts; ++i) { 
             auto& C = clients[i]; 
             C.id = i; 
@@ -238,13 +236,24 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
             C.n_prompt = C.prompt_tokens.size(); 
             C.t_start_prompt = ggml_time_us(); 
             
-            // Add prompt tokens to batch - each in their own sequence
-            for (size_t j = 0; j < C.prompt_tokens.size(); ++j) { 
-                common_batch_add(batch, C.prompt_tokens[j], j, {C.seq_id}, j == C.prompt_tokens.size() - 1); 
-            } 
-            
             C.smpl = common_sampler_init(model, sparams); 
             if (!C.smpl) throw std::runtime_error("Sampler init failed for client " + std::to_string(i)); 
+        }
+        
+        // Phase 3: Process all prompts in seq_id=0 first (shared processing)
+        llama_batch batch = llama_batch_init(n_ctx, 0, 1);
+        
+        // Find the longest prompt to ensure we process enough tokens
+        size_t max_prompt_len = 0;
+        for (const auto& C : clients) {
+            max_prompt_len = std::max(max_prompt_len, C.prompt_tokens.size());
+        }
+        
+        // Process all tokens from all prompts in seq_id=0
+        for (const auto& C : clients) {
+            for (size_t j = 0; j < C.prompt_tokens.size(); ++j) {
+                common_batch_add(batch, C.prompt_tokens[j], j, {0}, j == C.prompt_tokens.size() - 1);
+            }
         } 
         
         // Process batch in chunks to avoid memory issues 
@@ -277,8 +286,9 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
         } 
         llama_batch_free(batch); 
         
-        // Each client's prompt is now processed in their own independent sequence
+        // Copy the decoded KV cache from seq_id=0 to each client's sequence
         for (auto& C : clients) { 
+            llama_kv_self_seq_cp(ctx, 0, C.seq_id, -1, -1);
             C.n_past = C.n_prompt; 
         } 
         
@@ -289,22 +299,19 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
             std::vector<int> batch_client_ids; 
             batch_client_ids.reserve(active); 
             
-            // Sample first token if needed, before batch setup
-            if (active == n_prompts) { // First generation loop
-                for (auto& C : clients) {
-                    C.sampled = common_sampler_sample(C.smpl, ctx, -1);
-                    common_sampler_accept(C.smpl, C.sampled, true);
-                }
-            }
-            
             // Add tokens for active clients 
             for (auto& C : clients) { 
                 if (C.finished) continue; 
                 
+                // For first generation step, use the last token from prompt
+                if (C.n_decoded == 0) {
+                    C.sampled = C.prompt_tokens.back();
+                }
+                
                 C.i_batch = batch.n_tokens; 
-                common_batch_add(batch, C.sampled, C.n_past, {C.seq_id}, true); 
+                const int pos = C.n_past + C.n_decoded;
+                common_batch_add(batch, C.sampled, pos, {C.seq_id}, true); 
                 batch_client_ids.push_back(C.id); 
-                C.n_past++; 
             } 
             
             if (batch.n_tokens == 0) { 
