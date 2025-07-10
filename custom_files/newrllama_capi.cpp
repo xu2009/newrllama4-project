@@ -407,17 +407,27 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
     // Clean up samplers
     for (auto& C : clients) if (C.smpl) common_sampler_free(C.smpl); 
     
-    // Prepare results with minimal cleaning
+    // Prepare results with enhanced cleaning
     *results_out = new char*[n_prompts]; 
     for (int i = 0; i < n_prompts; ++i) { 
         std::string clean_response = clients[i].response;
         
-        // Only remove leading/trailing whitespace
-        while (!clean_response.empty() && isspace(clean_response.front())) {
+        // Remove leading invalid characters (like "?" and non-printable chars)
+        while (!clean_response.empty() && 
+               (clean_response.front() == '?' || 
+                clean_response.front() < 32 || 
+                clean_response.front() > 126)) {
             clean_response = clean_response.substr(1);
         }
+        
+        // Remove trailing whitespace
         while (!clean_response.empty() && isspace(clean_response.back())) {
             clean_response.pop_back();
+        }
+        
+        // Remove leading whitespace after invalid char removal
+        while (!clean_response.empty() && isspace(clean_response.front())) {
+            clean_response = clean_response.substr(1);
         }
         
         (*results_out)[i] = string_to_c_str(clean_response); 
