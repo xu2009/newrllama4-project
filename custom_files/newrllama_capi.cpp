@@ -1,4 +1,9 @@
 #define NEWRLLAMA_BUILD_DLL
+#ifdef _WIN32
+#define NOMINMAX  // Prevent Windows.h from defining min/max macros
+#define _CRT_SECURE_NO_WARNINGS  // Disable MSVC security warnings
+#include <windows.h>
+#endif
 #include "newrllama_capi.h"
 #include "llama.h"
 #include "ggml.h"
@@ -12,9 +17,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
-#ifdef _WIN32
-#include <windows.h>
-#elif defined(__APPLE__)
+#ifdef __APPLE__
 #include <sys/sysctl.h>
 #elif defined(__linux__)
 #include <sys/sysinfo.h>
@@ -88,7 +91,7 @@ NEWRLLAMA_API newrllama_error_code newrllama_model_load_safe(const char* model_p
         
         // Get file size
         file.seekg(0, std::ios::end);
-        size_t file_size = file.tellg();
+        size_t file_size = static_cast<size_t>(file.tellg());
         file.seekg(0, std::ios::beg);
         
         // Check GGUF magic number
@@ -102,9 +105,9 @@ NEWRLLAMA_API newrllama_error_code newrllama_model_load_safe(const char* model_p
         
         // Estimate memory requirements if requested
         if (check_memory) {
-            size_t estimated_memory = file_size * 1.5; // Conservative estimate
+            size_t estimated_memory = static_cast<size_t>(file_size * 1.5); // Conservative estimate
             if (use_mmap) {
-                estimated_memory = file_size * 0.1; // Much less with mmap
+                estimated_memory = static_cast<size_t>(file_size * 0.1); // Much less with mmap
             }
             
             bool memory_ok = newrllama_check_memory_available(estimated_memory, error_message);
@@ -322,9 +325,9 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
             }
             
             // Process this client's prompt
-            int32_t n_batch = std::min(512, n_ctx); 
+            int32_t n_batch = (512 < n_ctx) ? 512 : n_ctx; 
             for (int32_t i = 0; i < (int32_t)batch.n_tokens; i += n_batch) { 
-                const int32_t n_tokens = std::min(n_batch, (int32_t)(batch.n_tokens - i)); 
+                const int32_t n_tokens = (n_batch < (int32_t)(batch.n_tokens - i)) ? n_batch : (int32_t)(batch.n_tokens - i); 
                 
                 llama_batch batch_view = { 
                     n_tokens, 
@@ -382,9 +385,9 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(newrllama_context
             } 
             
             // Process generation batch in chunks 
-            int32_t n_batch = std::min(512, n_ctx); 
+            int32_t n_batch = (512 < n_ctx) ? 512 : n_ctx; 
             for (int32_t i = 0; i < (int32_t)batch.n_tokens; i += n_batch) { 
-                const int32_t n_tokens = std::min(n_batch, (int32_t)(batch.n_tokens - i)); 
+                const int32_t n_tokens = (n_batch < (int32_t)(batch.n_tokens - i)) ? n_batch : (int32_t)(batch.n_tokens - i); 
                 
                 llama_batch batch_view = { 
                     n_tokens, 
@@ -798,7 +801,7 @@ NEWRLLAMA_API size_t newrllama_estimate_model_memory(const char* model_path, con
             return 0;
         }
         
-        size_t file_size = file.tellg();
+        size_t file_size = static_cast<size_t>(file.tellg());
         file.close();
         
         // Conservative memory estimation:
