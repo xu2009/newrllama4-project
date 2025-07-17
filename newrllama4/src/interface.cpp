@@ -99,6 +99,58 @@ SEXP r_model_load(SEXP model_path, SEXP n_gpu_layers, SEXP use_mmap, SEXP use_ml
     return p;
 }
 
+SEXP r_model_load_safe(SEXP model_path, SEXP n_gpu_layers, SEXP use_mmap, SEXP use_mlock, SEXP check_memory) {
+    if (!newrllama_api_is_loaded()) {
+        stop("Backend library is not loaded. Please run install_newrllama() first.");
+    }
+    std::string model_path_str = as<std::string>(model_path);
+    int n_gpu_layers_int = as<int>(n_gpu_layers);
+    bool use_mmap_bool = as<bool>(use_mmap);
+    bool use_mlock_bool = as<bool>(use_mlock);
+    bool check_memory_bool = as<bool>(check_memory);
+    
+    const char* error_message = nullptr;
+    newrllama_model_handle handle = nullptr;
+    check_error(newrllama_api.model_load_safe(model_path_str.c_str(), n_gpu_layers_int, use_mmap_bool, use_mlock_bool, check_memory_bool, &handle, &error_message), error_message);
+
+    SEXP p = R_MakeExternalPtr(handle, R_NilValue, R_NilValue);
+    PROTECT(p);
+    Rf_setAttrib(p, R_ClassSymbol, Rf_mkString("newrllama_model"));
+    R_RegisterCFinalizerEx(p, (R_CFinalizer_t)model_finalizer, TRUE);
+    UNPROTECT(1);
+    return p;
+}
+
+SEXP r_estimate_model_memory(SEXP model_path) {
+    if (!newrllama_api_is_loaded()) {
+        stop("Backend library is not loaded. Please run install_newrllama() first.");
+    }
+    
+    std::string model_path_str = as<std::string>(model_path);
+    const char* error_message = nullptr;
+    size_t estimated_memory = newrllama_api.estimate_model_memory(model_path_str.c_str(), &error_message);
+    
+    if (estimated_memory == 0 && error_message) {
+        stop(error_message);
+    }
+    
+    return NumericVector::create(static_cast<double>(estimated_memory));
+}
+
+SEXP r_check_memory_available(SEXP required_bytes) {
+    if (!newrllama_api_is_loaded()) {
+        stop("Backend library is not loaded. Please run install_newrllama() first.");
+    }
+    
+    double required_bytes_double = as<double>(required_bytes);
+    size_t required_bytes_size = static_cast<size_t>(required_bytes_double);
+    
+    const char* error_message = nullptr;
+    bool available = newrllama_api.check_memory_available(required_bytes_size, &error_message);
+    
+    return LogicalVector::create(available);
+}
+
 SEXP r_context_create(SEXP model_ptr, SEXP n_ctx, SEXP n_threads, SEXP n_seq_max) {
     if (!newrllama_api_is_loaded()) {
         stop("Backend library is not loaded. Please run install_newrllama() first.");

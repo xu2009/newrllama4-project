@@ -8,6 +8,7 @@ struct newrllama_api_ptrs {
     decltype(&newrllama_backend_init) backend_init;
     decltype(&newrllama_backend_free) backend_free;
     decltype(&newrllama_model_load) model_load;
+    decltype(&newrllama_model_load_safe) model_load_safe;
     decltype(&newrllama_model_free) model_free;
     decltype(&newrllama_context_create) context_create;
     decltype(&newrllama_context_free) context_free;
@@ -45,6 +46,10 @@ struct newrllama_api_ptrs {
     // Model download functions
     decltype(&newrllama_download_model) download_model;
     decltype(&newrllama_resolve_model) resolve_model;
+    
+    // Memory checking functions
+    decltype(&newrllama_estimate_model_memory) estimate_model_memory;
+    decltype(&newrllama_check_memory_available) check_memory_available;
 };
 
 // 声明一个全局的函数指针结构体实例

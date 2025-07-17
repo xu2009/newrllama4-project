@@ -24,10 +24,14 @@ backend_free <- function() {
 #' Load a language model (with smart download)
 #'
 #' @param model_path Path to the GGUF model file or a URL (supports hf://, ollama://, https://, etc.)
+#' @param cache_dir Custom cache directory for downloaded models (default: NULL, uses system cache)
 #' @param n_gpu_layers Number of layers to offload to GPU (default: 0)
 #' @param use_mmap Whether to use memory mapping (default: TRUE)
 #' @param use_mlock Whether to use memory locking (default: FALSE)
 #' @param show_progress Whether to show download progress for URLs (default: TRUE)
+#' @param force_redownload Force re-download even if cached version exists (default: FALSE)
+#' @param verify_integrity Verify file integrity before loading (default: TRUE)
+#' @param check_memory Check if sufficient memory is available before loading (default: TRUE)
 #' @return A model object (external pointer)
 #' @export
 #' @examples
@@ -38,20 +42,32 @@ backend_free <- function() {
 #' # Auto-download from URL
 #' model <- model_load("https://example.com/model.gguf")
 #' 
-#' # Auto-download from Hugging Face (when implemented)
-#' # model <- model_load("hf://microsoft/DialoGPT-medium")
+#' # Download to custom cache directory
+#' model <- model_load("https://example.com/model.gguf", cache_dir = "~/my_models")
+#' 
+#' # Force re-download
+#' model <- model_load("https://example.com/model.gguf", force_redownload = TRUE)
 #' }
-model_load <- function(model_path, n_gpu_layers = 0L, use_mmap = TRUE, use_mlock = FALSE, show_progress = TRUE) {
+model_load <- function(model_path, cache_dir = NULL, n_gpu_layers = 0L, use_mmap = TRUE, 
+                       use_mlock = FALSE, show_progress = TRUE, force_redownload = FALSE, 
+                       verify_integrity = TRUE, check_memory = TRUE) {
   .ensure_backend_loaded()
   
   # Resolve model path (download if needed)
-  resolved_path <- .resolve_model_path(model_path, show_progress)
+  resolved_path <- .resolve_model_path(model_path, cache_dir, show_progress, 
+                                       force_redownload, verify_integrity)
   
-  .Call("c_r_model_load", 
+  # Check memory availability before loading
+  if (check_memory) {
+    .check_model_memory_requirements(resolved_path)
+  }
+  
+  .Call("c_r_model_load_safe", 
         as.character(resolved_path),
         as.integer(n_gpu_layers), 
         as.logical(use_mmap),
-        as.logical(use_mlock))
+        as.logical(use_mlock),
+        as.logical(check_memory))
 }
 
 #' Create inference context
@@ -215,6 +231,8 @@ tokenize_test <- function(model) {
 #' @param model_url URL of the model to download (supports https://, hf://, ollama://, etc.)
 #' @param output_path Local path where to save the model (optional, will use cache if not provided)
 #' @param show_progress Whether to show download progress (default: TRUE)
+#' @param verify_integrity Verify file integrity after download (default: TRUE)
+#' @param max_retries Maximum number of download retries (default: 3)
 #' @return The path where the model was saved
 #' @export
 #' @examples
@@ -225,7 +243,8 @@ tokenize_test <- function(model) {
 #' # Download to cache (path will be returned)
 #' cached_path <- download_model("https://example.com/model.gguf")
 #' }
-download_model <- function(model_url, output_path = NULL, show_progress = TRUE) {
+download_model <- function(model_url, output_path = NULL, show_progress = TRUE, 
+                           verify_integrity = TRUE, max_retries = 3) {
   .ensure_backend_loaded()
   
   if (is.null(output_path)) {
@@ -241,13 +260,15 @@ download_model <- function(model_url, output_path = NULL, show_progress = TRUE) 
   message("Downloading model from: ", model_url)
   message("Saving to: ", output_path)
   
-  .Call("c_r_download_model", 
-        as.character(model_url),
-        as.character(output_path),
-        as.logical(show_progress))
+  # Download with retry mechanism
+  .download_with_retry(model_url, output_path, show_progress, max_retries)
   
-  if (!file.exists(output_path)) {
-    stop("Download failed: file not found after download", call. = FALSE)
+  # Verify integrity if requested
+  if (verify_integrity) {
+    if (!.verify_file_integrity(output_path)) {
+      file.remove(output_path)
+      stop("Downloaded file failed integrity check", call. = FALSE)
+    }
   }
   
   message("Model downloaded successfully!")
@@ -286,8 +307,26 @@ get_model_cache_dir <- function() {
 }
 
 #' Get cache directory for models
+#' @param cache_dir Custom cache directory (if NULL, uses default)
 #' @return Path to the model cache directory
-.get_model_cache_dir <- function() {
+.get_model_cache_dir <- function(cache_dir = NULL) {
+  if (!is.null(cache_dir)) {
+    if (!dir.exists(cache_dir)) {
+      dir.create(cache_dir, recursive = TRUE)
+    }
+    return(cache_dir)
+  }
+  
+  # Check environment variable
+  env_cache <- Sys.getenv("NEWRLLAMA_CACHE_DIR", unset = NA)
+  if (!is.na(env_cache) && nchar(env_cache) > 0) {
+    if (!dir.exists(env_cache)) {
+      dir.create(env_cache, recursive = TRUE)
+    }
+    return(env_cache)
+  }
+  
+  # Default cache directory
   cache_dir <- tools::R_user_dir("newrllama4", which = "cache")
   models_dir <- file.path(cache_dir, "models")
   
@@ -300,9 +339,10 @@ get_model_cache_dir <- function() {
 
 #' Generate cache path for a model URL
 #' @param model_url The model URL
+#' @param cache_dir Custom cache directory (optional)
 #' @return Local cache path for the model
-.get_cache_path <- function(model_url) {
-  cache_dir <- .get_model_cache_dir()
+.get_cache_path <- function(model_url, cache_dir = NULL) {
+  cache_dir <- .get_model_cache_dir(cache_dir)
   
   # Extract filename from URL
   # For most URLs, this will be the last part after the final /
@@ -327,48 +367,236 @@ get_model_cache_dir <- function() {
 #' @param cache_path The local cache path
 #' @param show_progress Whether to show download progress
 .download_model_to_cache <- function(model_url, cache_path, show_progress = TRUE) {
-  .ensure_backend_loaded()
+  # Create output directory if it doesn't exist
+  output_dir <- dirname(cache_path)
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
   
   message("Downloading model from: ", model_url)
   message("Saving to: ", cache_path)
   
-  .Call("c_r_download_model", 
-        as.character(model_url),
-        as.character(cache_path),
-        as.logical(show_progress))
-  
-  if (!file.exists(cache_path)) {
-    stop("Download failed: file not found after download", call. = FALSE)
-  }
+  # Download with retry mechanism
+  .download_with_retry(model_url, cache_path, show_progress)
   
   message("Model downloaded successfully!")
 }
 
 #' Resolve model path (download if needed)
 #' @param model_path The model path or URL
+#' @param cache_dir Custom cache directory (optional)
 #' @param show_progress Whether to show download progress
+#' @param force_redownload Force re-download even if cached version exists
+#' @param verify_integrity Verify file integrity
 #' @return The resolved local file path
-.resolve_model_path <- function(model_path, show_progress = TRUE) {
-  # If it's a local file that exists, return as-is
+.resolve_model_path <- function(model_path, cache_dir = NULL, show_progress = TRUE, 
+                                force_redownload = FALSE, verify_integrity = TRUE) {
+  # If it's a local file that exists, verify and return
   if (!.is_url(model_path) && file.exists(model_path)) {
+    if (verify_integrity && !.verify_file_integrity(model_path)) {
+      stop("Local model file failed integrity check: ", model_path, call. = FALSE)
+    }
     return(model_path)
   }
   
   # If it's a URL, handle download
   if (.is_url(model_path)) {
-    cache_path <- .get_cache_path(model_path)
+    cache_path <- .get_cache_path(model_path, cache_dir)
     
-    # If cached version exists, use it
-    if (file.exists(cache_path)) {
-      message("Using cached model: ", cache_path)
-      return(cache_path)
+    # Check if cached version exists and is valid
+    if (file.exists(cache_path) && !force_redownload) {
+      if (verify_integrity) {
+        if (.verify_file_integrity(cache_path)) {
+          message("Using cached model: ", cache_path)
+          return(cache_path)
+        } else {
+          message("Cached model failed integrity check, re-downloading...")
+          file.remove(cache_path)
+        }
+      } else {
+        message("Using cached model: ", cache_path)
+        return(cache_path)
+      }
     }
     
     # Download to cache
     .download_model_to_cache(model_path, cache_path, show_progress)
+    
+    # Verify downloaded file
+    if (verify_integrity && !.verify_file_integrity(cache_path)) {
+      file.remove(cache_path)
+      stop("Downloaded model failed integrity check", call. = FALSE)
+    }
+    
     return(cache_path)
   }
   
   # If it's neither a URL nor an existing file, it's an error
   stop("Model file does not exist and is not a valid URL: ", model_path, call. = FALSE)
+}
+
+#' Verify file integrity
+#' @param file_path Path to the file to verify
+#' @param expected_size Expected file size in bytes (optional)
+#' @return TRUE if file is valid, FALSE otherwise
+.verify_file_integrity <- function(file_path, expected_size = NULL) {
+  if (!file.exists(file_path)) {
+    return(FALSE)
+  }
+  
+  file_info <- file.info(file_path)
+  
+  # Check if file is empty or suspiciously small
+  if (file_info$size < 1024) {  # Less than 1KB
+    return(FALSE)
+  }
+  
+  # Check expected size if provided
+  if (!is.null(expected_size) && file_info$size != expected_size) {
+    return(FALSE)
+  }
+  
+  # Basic GGUF format check
+  if (!.is_valid_gguf_file(file_path)) {
+    return(FALSE)
+  }
+  
+  return(TRUE)
+}
+
+#' Check if file is a valid GGUF file
+#' @param file_path Path to the file to check
+#' @return TRUE if valid GGUF file, FALSE otherwise
+.is_valid_gguf_file <- function(file_path) {
+  tryCatch({
+    con <- file(file_path, "rb")
+    on.exit(close(con), add = TRUE)
+    
+    # Read first 4 bytes for GGUF magic number
+    magic <- readBin(con, "raw", n = 4)
+    
+    # GGUF magic number: "GGUF" (0x47474755)
+    expected_magic <- as.raw(c(0x47, 0x47, 0x55, 0x46))
+    
+    return(identical(magic, expected_magic))
+  }, error = function(e) {
+    return(FALSE)
+  })
+}
+
+#' Check memory requirements for model loading
+#' @param model_path Path to the model file
+.check_model_memory_requirements <- function(model_path) {
+  .ensure_backend_loaded()
+  
+  tryCatch({
+    # Get estimated memory requirement
+    estimated_memory <- .Call("c_r_estimate_model_memory", as.character(model_path))
+    
+    # Check if sufficient memory is available
+    memory_available <- .Call("c_r_check_memory_available", as.numeric(estimated_memory))
+    
+    if (!memory_available) {
+      file_size_mb <- round(file.info(model_path)$size / 1024 / 1024, 1)
+      estimated_mb <- round(estimated_memory / 1024 / 1024, 1)
+      
+      warning("Insufficient memory detected. Model file size: ", file_size_mb, 
+              "MB, estimated memory requirement: ", estimated_mb, "MB. ",
+              "Loading may cause system instability or crashes.", call. = FALSE)
+              
+      response <- readline("Do you want to continue anyway? (y/N): ")
+      if (tolower(trimws(response)) != "y") {
+        stop("Model loading cancelled by user due to insufficient memory", call. = FALSE)
+      }
+    }
+  }, error = function(e) {
+    # If memory check fails, issue warning but continue
+    warning("Could not check memory requirements: ", e$message, call. = FALSE)
+  })
+}
+
+#' Download with retry mechanism
+#' @param model_url URL to download from
+#' @param output_path Local path to save to
+#' @param show_progress Whether to show progress
+#' @param max_retries Maximum number of retries
+.download_with_retry <- function(model_url, output_path, show_progress = TRUE, max_retries = 3) {
+  .ensure_backend_loaded()
+  
+  # Create lock file to prevent concurrent downloads
+  lock_file <- paste0(output_path, ".lock")
+  
+  # Check if another process is downloading
+  if (file.exists(lock_file)) {
+    message("Another download in progress, waiting...")
+    for (i in 1:30) {  # Wait up to 30 seconds
+      Sys.sleep(1)
+      if (!file.exists(lock_file)) break
+    }
+    
+    if (file.exists(lock_file)) {
+      stop("Download timeout: another process seems to be stuck", call. = FALSE)
+    }
+  }
+  
+  # Create lock file
+  file.create(lock_file)
+  on.exit({
+    if (file.exists(lock_file)) {
+      file.remove(lock_file)
+    }
+  }, add = TRUE)
+  
+  last_error <- NULL
+  
+  for (attempt in 1:max_retries) {
+    if (attempt > 1) {
+      message("Download attempt ", attempt, " of ", max_retries, "...")
+      Sys.sleep(2)  # Brief delay between retries
+    }
+    
+    tryCatch({
+      # Try C++ download first
+      .Call("c_r_download_model", 
+            as.character(model_url),
+            as.character(output_path),
+            as.logical(show_progress))
+      
+      # Check if download was successful
+      if (file.exists(output_path) && file.info(output_path)$size > 0) {
+        return()
+      }
+      
+      stop("Download produced empty file")
+      
+    }, error = function(e) {
+      last_error <<- e
+      
+      # Clean up partial download
+      if (file.exists(output_path)) {
+        file.remove(output_path)
+      }
+      
+      # Try R fallback on last attempt
+      if (attempt == max_retries) {
+        message("C++ download failed, trying R fallback...")
+        
+        tryCatch({
+          utils::download.file(model_url, output_path, mode = "wb", 
+                              method = "auto", quiet = !show_progress)
+          
+          if (file.exists(output_path) && file.info(output_path)$size > 0) {
+            return()
+          }
+          
+        }, error = function(e2) {
+          last_error <<- e2
+        })
+      }
+    })
+  }
+  
+  # If we get here, all attempts failed
+  stop("Download failed after ", max_retries, " attempts. Last error: ", 
+       last_error$message, call. = FALSE)
 } 

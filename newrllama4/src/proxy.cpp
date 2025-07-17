@@ -27,6 +27,7 @@ bool newrllama_api_init(void* handle) {
         LOAD_SYMBOL(handle, backend_init);
         LOAD_SYMBOL(handle, backend_free);
         LOAD_SYMBOL(handle, model_load);
+        LOAD_SYMBOL(handle, model_load_safe);
         LOAD_SYMBOL(handle, model_free);
         LOAD_SYMBOL(handle, context_create);
         LOAD_SYMBOL(handle, context_free);
@@ -64,6 +65,10 @@ bool newrllama_api_init(void* handle) {
         // 加载模型下载函数
         LOAD_SYMBOL(handle, download_model);
         LOAD_SYMBOL(handle, resolve_model);
+        
+        // 加载内存检查函数
+        LOAD_SYMBOL(handle, estimate_model_memory);
+        LOAD_SYMBOL(handle, check_memory_available);
         
         return true;
         

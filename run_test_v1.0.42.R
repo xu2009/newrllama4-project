@@ -7,6 +7,12 @@ cat("=====================================================\n")
 # Initialize
 backend_init()
 
+
+model_load("https://huggingface.co/ggml-org/SmolLM3-3B-GGUF/resolve/main/SmolLM3-Q4_K_M.gguf")
+
+
+results <- quick_llama("Where is New York?")
+
 # Load model
 model_path <- "/Users/yaoshengleo/Desktop/gguf模型/Llama-3.2-1B-Instruct.Q8_0.gguf"
 cat("Loading model:", basename(model_path), "\n")
@@ -21,7 +27,7 @@ cat("Context created (n_ctx=4096, n_seq_max=10)\n")
 test_prompts <- c(
   "Introduce Purdue University.",
   "Explain the calculation process of 5 plus 3.", 
-  "Who is Yaosheng Xu?"
+  "what are the main goals of political science?"
 )
 
 cat("\nTest prompts:\n")

@@ -10,6 +10,15 @@
 #include <cstring>
 #include <ctime>
 #include <algorithm>
+#include <fstream>
+#include <iostream>
+#ifdef _WIN32
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <sys/sysctl.h>
+#elif defined(__linux__)
+#include <sys/sysinfo.h>
+#endif
 
 static thread_local std::string last_error_message;
 
@@ -65,6 +74,68 @@ NEWRLLAMA_API newrllama_error_code newrllama_model_load(const char* model_path, 
     } 
     *model_handle_out = model; 
     return NEWRLLAMA_SUCCESS; 
+}
+
+// Enhanced model loading with memory checking
+NEWRLLAMA_API newrllama_error_code newrllama_model_load_safe(const char* model_path, int n_gpu_layers, bool use_mmap, bool use_mlock, bool check_memory, newrllama_model_handle* model_handle_out, const char** error_message) {
+    try {
+        // Check if file exists and is valid
+        std::ifstream file(model_path, std::ios::binary);
+        if (!file.is_open()) {
+            set_error(error_message, std::string("Cannot open model file: ") + model_path);
+            return NEWRLLAMA_ERROR;
+        }
+        
+        // Get file size
+        file.seekg(0, std::ios::end);
+        size_t file_size = file.tellg();
+        file.seekg(0, std::ios::beg);
+        
+        // Check GGUF magic number
+        char magic[4];
+        file.read(magic, 4);
+        if (magic[0] != 'G' || magic[1] != 'G' || magic[2] != 'U' || magic[3] != 'F') {
+            set_error(error_message, "Invalid GGUF file format");
+            return NEWRLLAMA_ERROR;
+        }
+        file.close();
+        
+        // Estimate memory requirements if requested
+        if (check_memory) {
+            size_t estimated_memory = file_size * 1.5; // Conservative estimate
+            if (use_mmap) {
+                estimated_memory = file_size * 0.1; // Much less with mmap
+            }
+            
+            bool memory_ok = newrllama_check_memory_available(estimated_memory, error_message);
+            if (!memory_ok) {
+                set_error(error_message, "Insufficient memory for model loading");
+                return NEWRLLAMA_ERROR;
+            }
+        }
+        
+        // Load the model with enhanced error handling
+        llama_model_params model_params = llama_model_default_params();
+        model_params.n_gpu_layers = n_gpu_layers;
+        model_params.use_mmap = use_mmap;
+        model_params.use_mlock = use_mlock;
+        
+        llama_model* model = llama_model_load_from_file(model_path, model_params);
+        if (model == nullptr) {
+            set_error(error_message, std::string("Failed to load model from path: ") + model_path + ". This may be due to insufficient memory, corrupted file, or unsupported model format.");
+            return NEWRLLAMA_ERROR;
+        }
+        
+        *model_handle_out = model;
+        return NEWRLLAMA_SUCCESS;
+        
+    } catch (const std::exception& e) {
+        set_error(error_message, std::string("Exception during model loading: ") + e.what());
+        return NEWRLLAMA_ERROR;
+    } catch (...) {
+        set_error(error_message, "Unknown exception during model loading");
+        return NEWRLLAMA_ERROR;
+    }
 }
 
 NEWRLLAMA_API void newrllama_model_free(newrllama_model_handle model) { 
@@ -709,5 +780,91 @@ NEWRLLAMA_API newrllama_error_code newrllama_resolve_model(const char* model_url
     } catch (const std::exception& e) {
         set_error(error_message, std::string("Model resolution error: ") + e.what());
         return NEWRLLAMA_ERROR;
+    }
+}
+
+// Memory checking functions
+NEWRLLAMA_API size_t newrllama_estimate_model_memory(const char* model_path, const char** error_message) {
+    try {
+        if (!model_path) {
+            set_error(error_message, "Invalid model path");
+            return 0;
+        }
+        
+        // Get file size
+        std::ifstream file(model_path, std::ios::binary | std::ios::ate);
+        if (!file.is_open()) {
+            set_error(error_message, std::string("Cannot open model file: ") + model_path);
+            return 0;
+        }
+        
+        size_t file_size = file.tellg();
+        file.close();
+        
+        // Conservative memory estimation:
+        // - File size for loading
+        // - Additional 50% for processing and overhead
+        // - This is a rough estimate, actual usage may vary
+        size_t estimated_memory = file_size + (file_size / 2);
+        
+        return estimated_memory;
+        
+    } catch (const std::exception& e) {
+        set_error(error_message, std::string("Error estimating memory: ") + e.what());
+        return 0;
+    }
+}
+
+NEWRLLAMA_API bool newrllama_check_memory_available(size_t required_bytes, const char** error_message) {
+    try {
+#ifdef _WIN32
+        // Windows memory check
+        MEMORYSTATUSEX status;
+        status.dwLength = sizeof(status);
+        if (GlobalMemoryStatusEx(&status)) {
+            size_t available_memory = status.ullAvailPhys;
+            return available_memory >= required_bytes;
+        }
+        return true; // If we can't check, assume it's okay
+#elif defined(__APPLE__)
+        // macOS memory check
+        int64_t physical_memory = 0;
+        size_t size = sizeof(physical_memory);
+        if (sysctlbyname("hw.memsize", &physical_memory, &size, NULL, 0) == 0) {
+            // Simple heuristic: check if required memory is less than 80% of total
+            size_t available_estimate = physical_memory * 0.8;
+            return available_estimate >= required_bytes;
+        }
+        return true;
+#elif defined(__linux__)
+        // Linux memory check
+        std::ifstream meminfo("/proc/meminfo");
+        if (meminfo.is_open()) {
+            std::string line;
+            size_t mem_available = 0;
+            
+            while (std::getline(meminfo, line)) {
+                if (line.find("MemAvailable:") != std::string::npos) {
+                    // Extract memory value (in kB)
+                    size_t pos = line.find(":") + 1;
+                    size_t end = line.find("kB");
+                    if (pos != std::string::npos && end != std::string::npos) {
+                        std::string mem_str = line.substr(pos, end - pos);
+                        mem_available = std::stoull(mem_str) * 1024; // Convert to bytes
+                        break;
+                    }
+                }
+            }
+            
+            return mem_available >= required_bytes;
+        }
+        return true;
+#else
+        // Unknown platform, assume memory is available
+        return true;
+#endif
+    } catch (const std::exception& e) {
+        set_error(error_message, std::string("Error checking memory: ") + e.what());
+        return true; // If we can't check, assume it's okay
     }
 } 
