@@ -44,11 +44,7 @@ test_that("quick_llama functions work", {
   expect_type(quick_llama, "closure")
   expect_type(quick_llama_reset, "closure")
   
-  # Test quick_llama_reset (may produce messages, skip if no backend)
-  if (lib_is_installed()) {
-    expect_no_error(quick_llama_reset())
-  } else {
-    # In CI, just test that function handles missing backend gracefully
-    expect_error(quick_llama_reset(), "backend library is not installed")
-  }
+  # Test quick_llama_reset (works regardless of backend status)
+  # This function only clears cache, doesn't need backend
+  expect_message(quick_llama_reset(), "quick_llama state reset")
 })
