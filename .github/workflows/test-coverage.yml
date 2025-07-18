@@ -39,8 +39,8 @@ jobs:
         # Move to package directory
         cd newrllama4
         
-        # Clean any remaining compiled files
-        make clean || true
+        # Clean any remaining compiled files (ignore if no Makefile)
+        rm -f src/*.o src/*.so || true
         
         # Install package
         R CMD INSTALL . --clean

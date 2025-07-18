@@ -8,7 +8,7 @@ test_that("download functions work", {
   expect_type(download_model, "closure")
   expect_type(get_model_cache_dir, "closure")
   
-  # Test get_model_cache_dir
+  # Test get_model_cache_dir (this should work without backend)
   cache_dir <- get_model_cache_dir()
   expect_type(cache_dir, "character")
   expect_true(length(cache_dir) > 0)
