@@ -18,6 +18,9 @@ Imports:
     Rcpp (>= 1.0.14),
     tools,
     utils
+Suggests:
+    testthat (>= 3.0.0),
+    covr
 URL: https://github.com/xu2009/newrllama4
 BugReports: https://github.com/xu2009/newrllama4/issues
 SystemRequirements: C++17, libcurl (optional, for model downloading)

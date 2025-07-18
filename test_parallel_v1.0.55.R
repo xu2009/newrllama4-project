@@ -24,7 +24,7 @@ backend_init()
 
 # 4. 加载模型
 cat("📚 [4/4] 加载 Llama 模型...\n")
-model_path <- "/Users/yaoshengleo/Desktop/gguf模型/Llama-3.2-1B-Instruct.Q8_0.gguf"
+model_path <- "/Users/yaoshengleo/Desktop/gguf模型/Meta-Llama-3.1-8B-Instruct-Q8_0.gguf"
 if (!file.exists(model_path)) {
   cat("❌ 请更新模型路径\n")
   quit(status = 1)
@@ -51,8 +51,9 @@ start_time <- Sys.time()
 results_basic <- generate_parallel(
   context_parallel,
   prompts_basic,
-  max_tokens = 30L,
-  temperature = 0.7
+  max_tokens = 100,
+  temperature = 0.7,
+  seed = 42,
 )
 end_time <- Sys.time()
 processing_time <- as.numeric(end_time - start_time)
@@ -132,7 +133,7 @@ start_time <- Sys.time()
 results_large <- generate_parallel(
   context_parallel,
   prompts_large,
-  max_tokens = 20L,
+  max_tokens = 20,
   temperature = 0.5
 )
 end_time <- Sys.time()
