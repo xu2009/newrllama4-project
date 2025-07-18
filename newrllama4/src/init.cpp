@@ -13,7 +13,17 @@ extern "C" {
   SEXP r_backend_init();
   SEXP r_backend_free();
   SEXP r_model_load(SEXP model_path, SEXP n_gpu_layers, SEXP use_mmap, SEXP use_mlock);
+  SEXP r_model_load_safe(SEXP model_path, SEXP n_gpu_layers, SEXP use_mmap, SEXP use_mlock, SEXP check_memory);
   SEXP r_context_create(SEXP model_ptr, SEXP n_ctx, SEXP n_threads, SEXP n_seq_max);
+  
+  // Memory checking functions
+  SEXP r_estimate_model_memory(SEXP model_path);
+  SEXP r_check_memory_available(SEXP required_bytes);
+  
+  // Download functions
+  SEXP c_r_download_model(SEXP model_url, SEXP output_path, SEXP show_progress);
+  SEXP c_r_resolve_model(SEXP model_url);
+  
   SEXP r_tokenize(SEXP model_ptr, SEXP text, SEXP add_special);
   SEXP r_detokenize(SEXP model_ptr, SEXP tokens);
   SEXP r_apply_chat_template(SEXP model_ptr, SEXP tmpl, SEXP chat_messages, SEXP add_ass);
@@ -52,7 +62,17 @@ static const R_CallMethodDef CallEntries[] = {
   {"c_r_backend_init", (DL_FUNC) &r_backend_init, 0},
   {"c_r_backend_free", (DL_FUNC) &r_backend_free, 0},
   {"c_r_model_load", (DL_FUNC) &r_model_load, 4},
+  {"c_r_model_load_safe", (DL_FUNC) &r_model_load_safe, 5},
   {"c_r_context_create", (DL_FUNC) &r_context_create, 4},
+  
+  // Memory checking functions
+  {"c_r_estimate_model_memory", (DL_FUNC) &r_estimate_model_memory, 1},
+  {"c_r_check_memory_available", (DL_FUNC) &r_check_memory_available, 1},
+  
+  // Download functions
+  {"c_r_download_model", (DL_FUNC) &c_r_download_model, 3},
+  {"c_r_resolve_model", (DL_FUNC) &c_r_resolve_model, 1},
+  
   {"c_r_tokenize", (DL_FUNC) &r_tokenize, 3},
   {"c_r_detokenize", (DL_FUNC) &r_detokenize, 2},
   {"c_r_apply_chat_template", (DL_FUNC) &r_apply_chat_template, 4},
