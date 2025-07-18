@@ -108,4 +108,4 @@ extern "C" void R_init_newrllama4(DllInfo *dll) {
   R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
   R_useDynamicSymbols(dll, TRUE);
   R_forceSymbols(dll, FALSE);
-} 
+}

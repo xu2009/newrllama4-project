@@ -23,7 +23,7 @@ jobs:
     - uses: r-lib/actions/setup-r-dependencies@v2
       with:
         working-directory: newrllama4
-        extra-packages: any::covr, any::jsonlite
+        extra-packages: any::covr
         needs: coverage
     
     - name: Clean compiled files
@@ -59,30 +59,9 @@ jobs:
           
           print(coverage)
           
-          # Save coverage report to cobertura XML format
-          to_cobertura(coverage, filename = '../coverage.xml')
-          
-          # Also save as JSON for debugging
-          writeLines(jsonlite::toJSON(coverage, auto_unbox = TRUE), '../coverage.json')
-          
-          # Upload to codecov
+          # Upload to codecov (this will handle the file generation)
           codecov(coverage = coverage, token = Sys.getenv('CODECOV_TOKEN'))
         "
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     
-    - name: List coverage files
-      run: |
-        echo "=== Coverage files in current directory ==="
-        find . -name "coverage.*" -type f -ls
-        echo "=== Directory contents ==="
-        ls -la
-    
-    - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
