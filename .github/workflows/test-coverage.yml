@@ -26,13 +26,24 @@ jobs:
         extra-packages: any::covr
         needs: coverage
     
+    - name: Clean compiled files
+      run: |
+        # Remove any compiled files that might cause issues
+        find . -name "*.o" -delete
+        find . -name "*.so" -delete
+        find . -name "*.dll" -delete
+        find . -name "*.dylib" -delete
+    
     - name: Test coverage
       run: |
         # Move to package directory
         cd newrllama4
         
+        # Clean any remaining compiled files
+        make clean || true
+        
         # Install package
-        R CMD INSTALL .
+        R CMD INSTALL . --clean
         
         # Run coverage with covr
         Rscript -e "
