@@ -57,59 +57,17 @@ Character string (single prompt) or named list (multiple prompts)
 A high-level convenience function that provides one-line LLM inference.
 Automatically handles model downloading, loading, and text generation.
 }
-\details{
-This function provides a zero-configuration approach to using LLaMA models:
-
-\itemize{
-\item \strong{Single prompt}: Returns a character string with the generated response
-\item \strong{Multiple prompts}: Returns a named list with responses for each prompt
-\item \strong{Auto-detection}: Automatically detects GPU support and optimal threading
-\item \strong{Model caching}: Downloads and caches models for faster subsequent use
-\item \strong{Smart defaults}: Uses recommended parameters optimized for quality and speed
-}
-
-The function handles the complete workflow:
-\enumerate{
-\item Backend initialization (if needed)
-\item Model download and caching (if needed)
-\item Model loading and context creation
-\item Text generation with optimal parameters
-}
-
-Default model is Llama-3.2-1B-Instruct Q4_K_M (~0.8GB), which provides good quality
-while being suitable for 8GB RAM systems running CPU-only inference.
-}
 \examples{
 \dontrun{
-# Simple usage - single prompt
+# Simple usage
 response <- quick_llama("Hello, how are you?")
-print(response)
 
-# Multiple prompts - batch processing
-prompts <- c("Summarize machine learning", 
-             "Explain quantum computing", 
-             "What is artificial intelligence?")
-responses <- quick_llama(prompts)
-print(responses)
+# Multiple prompts
+responses <- quick_llama(c("Summarize AI", "Explain quantum computing"))
 
-# Custom parameters for creative writing
-story <- quick_llama("Tell me a short story about a robot", 
-                     temperature = 0.9, 
-                     max_tokens = 200)
-print(story)
-
-# Using a different model
-response <- quick_llama("Translate to Spanish: Hello world",
-                        model = "https://example.com/other-model.gguf")
-
-# Reproducible results with seed
-response1 <- quick_llama("Generate a random number", seed = 42)
-response2 <- quick_llama("Generate a random number", seed = 42)
-# response1 and response2 will be identical
+# Custom parameters
+creative_response <- quick_llama("Tell me a story", 
+                                 temperature = 0.9, 
+                                 max_tokens = 200)
 }
-}
-\seealso{
-\code{\link{quick_llama_reset}} to clear cached models,
-\code{\link{model_load}} and \code{\link{generate}} for low-level control,
-\code{\link{install_newrllama}} for backend installation
 }

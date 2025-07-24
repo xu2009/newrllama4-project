@@ -10,30 +10,3 @@ quick_llama_reset()
 Clears cached model and context objects, forcing fresh initialization
 on the next call to quick_llama().
 }
-\details{
-This function is useful when:
-\itemize{
-\item You want to free up memory used by cached models
-\item You need to force reloading of models (e.g., after model files change)
-\item You want to switch to different model configurations
-\item You're experiencing issues with cached state
-}
-
-After calling this function, the next call to \code{quick_llama()} will
-re-initialize the backend, reload the model, and recreate the context.
-}
-\examples{
-\dontrun{
-# Use quick_llama normally
-response1 <- quick_llama("Hello")
-
-# Reset cached state
-quick_llama_reset()
-
-# Next call will reload everything
-response2 <- quick_llama("Hello again")
-}
-}
-\seealso{
-\code{\link{quick_llama}} for the main inference function
-}

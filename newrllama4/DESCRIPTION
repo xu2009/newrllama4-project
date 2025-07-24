@@ -1,17 +1,17 @@
 Package: newrllama4
 Type: Package
-Title: R Interface to llama.cpp with Runtime Library Loading and Model Download
+Title: R Interface to Llama.cpp with Runtime Library Loading and Model Download
 Version: 1.0.55
 Date: 2025-07-18
-Authors@R: person("yaoshengleo", "Developer", role = c("aut", "cre"), email = "yaoshengleo@example.com")
-Author: yaoshengleo Developer
-Maintainer: yaoshengleo Developer <yaoshengleo@example.com>
+Authors@R: person("yaoshengleo", role = c("aut", "cre"), email = "yaoshengleo@example.com")
+Author: yaoshengleo [aut, cre]
+Maintainer: yaoshengleo <yaoshengleo@example.com>
 Description: Provides R bindings to the llama.cpp library for running large language models.
     This package uses a lightweight architecture where the C++ backend library is downloaded
     at runtime rather than bundled with the package. After installation, users must run
     install_newrllama() to download the appropriate pre-compiled backend library for their
     system. Features include text generation, tokenization, chat template functionality,
-    and automatic model downloading from URLs (https://, hf://, ollama://, etc.) with
+    and automatic model downloading from URLs (<https://>, <hf://>, <ollama://>, etc.) with
     smart caching and progress tracking.
 License: MIT + file LICENSE
 Imports: 
@@ -21,7 +21,8 @@ Imports:
 Suggests:
     testthat (>= 3.0.0),
     covr
-URL: https://github.com/xu2009/newrllama4
-BugReports: https://github.com/xu2009/newrllama4/issues
+URL: https://github.com/xu2009/newrllama4-project
+BugReports: https://github.com/xu2009/newrllama4-project/issues
 SystemRequirements: C++17, libcurl (optional, for model downloading)
 Encoding: UTF-8
+RoxygenNote: 7.3.2
