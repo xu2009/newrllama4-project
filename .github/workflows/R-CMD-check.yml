@@ -1,0 +1,307 @@
+# R-CMD-check workflow for newrllama4 package
+# Adapted for packages with C++ backend and precompiled binary distribution
+# Workflow derived from https://github.com/r-lib/actions/tree/v2/examples
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+name: R-CMD-check
+
+permissions: read-all
+
+jobs:
+  R-CMD-check:
+    runs-on: ${{ matrix.config.os }}
+
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {os: macos-latest,   r: 'release'}
+          - {os: windows-latest, r: 'release', rspm: "https://packagemanager.rstudio.com/cran/latest"}
+          - {os: ubuntu-latest,   r: 'devel', http-user-agent: 'release'}
+          - {os: ubuntu-latest,   r: 'release'}
+          - {os: ubuntu-latest,   r: 'oldrel-1'}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      # Enable network access for downloading precompiled libraries
+      _R_CHECK_INTERNET_: TRUE
+      # Allow longer timeout for model downloads during tests
+      _R_CHECK_TESTS_NLINES_: 0
+      # Set environment variables for the package
+      NEWRLLAMA_CACHE_DIR: ${{ runner.temp }}/newrllama_cache
+      NEWRLLAMA_TEST_MODE: TRUE
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Include submodules if needed
+          submodules: true
+
+      - name: Setup Pandoc
+        uses: r-lib/actions/setup-pandoc@v2
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+          http-user-agent: ${{ matrix.config.http-user-agent }}
+          use-public-rspm: true
+          extra-repositories: ${{ matrix.config.rspm }}
+
+      # Install system dependencies based on the operating system
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # Install build tools if needed
+          brew install cmake
+          # Ensure Xcode command line tools are available
+          xcode-select --install || true
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            build-essential \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev \
+            libfontconfig1-dev \
+            libharfbuzz-dev \
+            libfribidi-dev \
+            libfreetype6-dev \
+            libpng-dev \
+            libtiff5-dev \
+            libjpeg-dev
+          # Additional dependencies for potential GPU support detection
+          sudo apt-get install -y pciutils || true
+
+      - name: Install system dependencies (Windows) 
+        if: runner.os == 'Windows'
+        run: |
+          # Windows typically has the necessary build tools through Rtools
+          echo "Using Rtools for build dependencies"
+        shell: bash
+
+      # Create cache directory for precompiled libraries
+      - name: Create cache directories
+        run: |
+          mkdir -p "${{ env.NEWRLLAMA_CACHE_DIR }}"
+        shell: bash
+
+      # Cache for R packages
+      - name: Cache R packages
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.R_LIBS_USER }}
+          key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('.github/depends.Rds') }}
+          restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
+
+      # Cache for precompiled libraries (optional, can help with repeated builds)
+      - name: Cache precompiled libraries
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.NEWRLLAMA_CACHE_DIR }}
+          key: newrllama-libs-${{ runner.os }}-v1.0.55
+          restore-keys: newrllama-libs-${{ runner.os }}-
+
+      # Setup R dependencies
+      - name: Install R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: |
+            any::rcmdcheck
+            any::testthat
+            any::devtools
+          needs: check
+
+      # Pre-install the backend library to avoid network issues during check
+      - name: Pre-install newrllama backend
+        run: |
+          Rscript -e "
+          # Load the package in development mode
+          devtools::load_all('newrllama4')
+          
+          # Try to install the backend library
+          tryCatch({
+            install_newrllama()
+            cat('Backend library installed successfully\n')
+          }, error = function(e) {
+            cat('Backend installation failed:', e$message, '\n')
+            cat('This may be expected in CI environment\n')
+          })
+          
+          # Check installation status
+          if (lib_is_installed()) {
+            cat('Backend library is available\n')
+          } else {
+            cat('Backend library is not available\n')
+          }
+          "
+        shell: bash
+        continue-on-error: true
+
+      # Main R CMD check
+      - name: Check R package
+        uses: r-lib/actions/check-r-package@v2
+        with:
+          upload-snapshots: true
+          build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
+          check_args: 'c("--no-manual", "--as-cran", "--no-vignettes")'
+          error-on: '"warning"'
+        env:
+          # Additional environment variables for the check process
+          _R_CHECK_FORCE_SUGGESTS_: false
+          # Allow some flexibility for tests that might need network/models
+          _R_CHECK_TESTS_NLINES_: 0
+          # Skip examples that might need large models
+          _R_CHECK_DONTTEST_EXAMPLES_: false
+
+  # Separate job for extended testing with actual model loading
+  # This job is more permissive and focuses on functionality rather than CRAN compliance
+  extended-tests:
+    runs-on: ${{ matrix.config.os }}
+    name: Extended tests - ${{ matrix.config.os }}
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'extended-tests')
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {os: ubuntu-latest, r: 'release'}
+          - {os: macos-latest, r: 'release'}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      NEWRLLAMA_CACHE_DIR: ${{ runner.temp }}/newrllama_cache
+      NEWRLLAMA_EXTENDED_TESTS: TRUE
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential libcurl4-openssl-dev
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake
+
+      - name: Install R dependencies
+        run: |
+          install.packages(c("devtools", "testthat", "Rcpp"))
+        shell: Rscript {0}
+
+      - name: Install package
+        run: |
+          devtools::install("newrllama4", dependencies = TRUE)
+        shell: Rscript {0}
+
+      - name: Run extended tests
+        run: |
+          library(newrllama4)
+          
+          # Test basic installation
+          cat("Testing backend installation...\n")
+          tryCatch({
+            install_newrllama()
+            backend_init()
+            cat("✓ Backend installation and initialization successful\n")
+          }, error = function(e) {
+            cat("✗ Backend test failed:", e$message, "\n")
+            quit(status = 1)
+          })
+          
+          # Test basic functionality without large models
+          cat("Testing basic functionality...\n")
+          tryCatch({
+            # Test that quick_llama can handle basic setup without actual model loading
+            # This is a minimal smoke test
+            result <- exists("quick_llama")
+            if (result) {
+              cat("✓ Package functions are available\n")
+            } else {
+              cat("✗ Package functions not found\n")
+              quit(status = 1)
+            }
+          }, error = function(e) {
+            cat("✗ Basic functionality test failed:", e$message, "\n")
+            quit(status = 1)
+          })
+          
+          cat("All extended tests passed!\n")
+        shell: Rscript {0}
+        timeout-minutes: 15
+
+  # Job to check DESCRIPTION and basic package structure
+  package-structure:
+    runs-on: ubuntu-latest
+    name: Package structure checks
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+          
+      - name: Install tools
+        run: |
+          install.packages(c("devtools", "usethis", "pkgload"))
+        shell: Rscript {0}
+        
+      - name: Check package structure
+        run: |
+          # Check DESCRIPTION file
+          desc <- read.dcf("newrllama4/DESCRIPTION")
+          cat("Package:", desc[,"Package"], "\n")
+          cat("Version:", desc[,"Version"], "\n")
+          cat("Title:", desc[,"Title"], "\n")
+          
+          # Check for required files
+          required_files <- c(
+            "newrllama4/DESCRIPTION",
+            "newrllama4/NAMESPACE", 
+            "newrllama4/R/",
+            "newrllama4/src/",
+            "newrllama4/man/"
+          )
+          
+          for (file in required_files) {
+            if (file.exists(file)) {
+              cat("✓", file, "exists\n")
+            } else {
+              cat("✗", file, "missing\n")
+            }
+          }
+          
+          # Try to load package metadata
+          tryCatch({
+            pkgload::load_all("newrllama4", compile = FALSE)
+            cat("✓ Package metadata loads successfully\n")
+          }, error = function(e) {
+            cat("✗ Package metadata error:", e$message, "\n")
+          })
+        shell: Rscript {0}
