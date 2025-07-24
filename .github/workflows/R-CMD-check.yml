@@ -36,7 +36,7 @@ jobs:
       # Allow longer timeout for model downloads during tests
       _R_CHECK_TESTS_NLINES_: 0
       # Set environment variables for the package
-      NEWRLLAMA_CACHE_DIR: ${{ runner.temp }}/newrllama_cache
+      NEWRLLAMA_CACHE_DIR: /tmp/newrllama_cache
       NEWRLLAMA_TEST_MODE: TRUE
 
     steps:
@@ -184,7 +184,7 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
-      NEWRLLAMA_CACHE_DIR: ${{ runner.temp }}/newrllama_cache
+      NEWRLLAMA_CACHE_DIR: /tmp/newrllama_cache
       NEWRLLAMA_EXTENDED_TESTS: TRUE
 
     steps:
