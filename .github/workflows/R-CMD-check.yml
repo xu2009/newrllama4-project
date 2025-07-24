@@ -17,6 +17,11 @@ jobs:
     runs-on: ${{ matrix.config.os }}
 
     name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+    
+    # Set working directory to the R package subdirectory
+    defaults:
+      run:
+        working-directory: newrllama4
 
     strategy:
       fail-fast: false
@@ -45,6 +50,14 @@ jobs:
         with:
           # Include submodules if needed
           submodules: true
+          
+      # Move to package directory for R operations
+      - name: Setup package working directory
+        run: |
+          ls -la
+          pwd
+        working-directory: .
+        shell: bash
 
       - name: Setup Pandoc
         uses: r-lib/actions/setup-pandoc@v2
@@ -96,56 +109,63 @@ jobs:
       # Create cache directory for precompiled libraries
       - name: Create cache directories
         run: |
-          mkdir -p "${{ env.NEWRLLAMA_CACHE_DIR }}"
+          mkdir -p "/tmp/newrllama_cache"
         shell: bash
+        working-directory: .
 
-      # Cache for R packages
+      # Use standard R package dependency caching
       - name: Cache R packages
         uses: actions/cache@v3
         with:
-          path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('.github/depends.Rds') }}
-          restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
+          path: ~/.cache/R
+          key: ${{ runner.os }}-r-${{ matrix.config.r }}-packages-${{ hashFiles('DESCRIPTION') }}
+          restore-keys: |
+            ${{ runner.os }}-r-${{ matrix.config.r }}-packages-
+            ${{ runner.os }}-r-${{ matrix.config.r }}-
 
       # Cache for precompiled libraries (optional, can help with repeated builds)
       - name: Cache precompiled libraries
         uses: actions/cache@v3
         with:
-          path: ${{ env.NEWRLLAMA_CACHE_DIR }}
+          path: /tmp/newrllama_cache
           key: newrllama-libs-${{ runner.os }}-v1.0.55
           restore-keys: newrllama-libs-${{ runner.os }}-
 
-      # Setup R dependencies
-      - name: Install R dependencies
-        uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          extra-packages: |
-            any::rcmdcheck
-            any::testthat
-            any::devtools
-          needs: check
+      # Install R dependencies manually for local package
+      - name: Install system dependencies for R packages
+        run: |
+          # Install essential R packages first
+          Rscript -e "install.packages(c('devtools', 'testthat', 'rcmdcheck', 'Rcpp'), repos='https://cloud.r-project.org')"
+        shell: bash
+        working-directory: .
+      
+      - name: Install package dependencies
+        run: |
+          # Install dependencies from DESCRIPTION
+          Rscript -e "devtools::install_deps(dependencies = TRUE, repos='https://cloud.r-project.org')"
+        shell: bash
 
       # Pre-install the backend library to avoid network issues during check
       - name: Pre-install newrllama backend
         run: |
           Rscript -e "
           # Load the package in development mode
-          devtools::load_all('newrllama4')
+          devtools::load_all('.')
           
           # Try to install the backend library
           tryCatch({
             install_newrllama()
-            cat('Backend library installed successfully\n')
+            cat('Backend library installed successfully\\n')
           }, error = function(e) {
-            cat('Backend installation failed:', e$message, '\n')
-            cat('This may be expected in CI environment\n')
+            cat('Backend installation failed:', e$message, '\\n')
+            cat('This may be expected in CI environment\\n')
           })
           
           # Check installation status
           if (lib_is_installed()) {
-            cat('Backend library is available\n')
+            cat('Backend library is available\\n')
           } else {
-            cat('Backend library is not available\n')
+            cat('Backend library is not available\\n')
           }
           "
         shell: bash
@@ -153,12 +173,15 @@ jobs:
 
       # Main R CMD check
       - name: Check R package
-        uses: r-lib/actions/check-r-package@v2
-        with:
-          upload-snapshots: true
-          build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
-          check_args: 'c("--no-manual", "--as-cran", "--no-vignettes")'
-          error-on: '"warning"'
+        run: |
+          # Run R CMD check manually with appropriate settings
+          Rscript -e "
+          rcmdcheck::rcmdcheck(
+            args = c('--no-manual', '--as-cran', '--no-vignettes'),
+            build_args = c('--no-manual', '--compact-vignettes=gs+qpdf'),
+            error_on = 'warning'
+          )
+          "
         env:
           # Additional environment variables for the check process
           _R_CHECK_FORCE_SUGGESTS_: false
@@ -166,6 +189,7 @@ jobs:
           _R_CHECK_TESTS_NLINES_: 0
           # Skip examples that might need large models
           _R_CHECK_DONTTEST_EXAMPLES_: false
+        shell: bash
 
   # Separate job for extended testing with actual model loading
   # This job is more permissive and focuses on functionality rather than CRAN compliance
@@ -209,7 +233,7 @@ jobs:
 
       - name: Install R dependencies
         run: |
-          install.packages(c("devtools", "testthat", "Rcpp"))
+          install.packages(c("devtools", "testthat", "Rcpp"), repos="https://cloud.r-project.org")
         shell: Rscript {0}
 
       - name: Install package
@@ -297,8 +321,12 @@ jobs:
             }
           }
           
-          # Try to load package metadata
+          # Install pkgload if needed and try to load package metadata
           tryCatch({
+            if (!require(pkgload, quietly = TRUE)) {
+              install.packages("pkgload", repos="https://cloud.r-project.org")
+              library(pkgload)
+            }
             pkgload::load_all("newrllama4", compile = FALSE)
             cat("✓ Package metadata loads successfully\n")
           }, error = function(e) {

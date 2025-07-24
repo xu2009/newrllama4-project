@@ -132,6 +132,17 @@ is_mock_object <- function(obj) {
   !is.null(attr(obj, "mock", exact = TRUE))
 }
 
+#' Expect that an object is a function (helper for testthat)
+expect_function <- function(object, info = NULL, label = NULL) {
+  if (is.null(label)) {
+    label <- deparse(substitute(object))
+  }
+  if (is.null(info)) {
+    info <- paste(label, "is not a function")
+  }
+  testthat::expect_true(is.function(object), info = info)
+}
+
 # Set up test environment when this file is loaded
 if (is_ci() || is_test_mode()) {
   setup_test_env()
