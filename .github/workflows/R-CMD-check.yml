@@ -236,7 +236,21 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential libcurl4-openssl-dev
+          sudo apt-get install -y \
+            cmake \
+            build-essential \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev \
+            libfontconfig1-dev \
+            libharfbuzz-dev \
+            libfribidi-dev \
+            libfreetype6-dev \
+            libpng-dev \
+            libtiff5-dev \
+            libjpeg-dev
+          # Additional dependencies for potential GPU support detection
+          sudo apt-get install -y pciutils || true
 
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
