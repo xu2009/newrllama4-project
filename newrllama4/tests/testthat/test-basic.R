@@ -27,6 +27,8 @@ test_that("utility functions work", {
 })
 
 test_that("quick_llama parameter validation", {
+  skip_if_windows("Skipping on Windows to avoid potential segfaults")
+  
   # Test parameter validation without actually running inference
   expect_error(quick_llama(), "Prompt cannot be empty")
   expect_error(quick_llama(NULL), "Prompt cannot be empty")

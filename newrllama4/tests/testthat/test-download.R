@@ -12,7 +12,16 @@ test_that("download functions work", {
   cache_dir <- get_model_cache_dir()
   expect_type(cache_dir, "character")
   expect_true(length(cache_dir) > 0)
-  expect_true(grepl("newrllama4", cache_dir))
+  
+  # In CI environment, cache_dir might be /tmp/newrllama_cache
+  # In normal environment, it should contain "newrllama4"
+  if (is_ci()) {
+    # In CI, just check that the path is valid
+    expect_true(dir.exists(cache_dir))
+  } else {
+    # In normal environment, expect "newrllama4" in the path
+    expect_true(grepl("newrllama4", cache_dir))
+  }
 })
 
 test_that("URL parsing works", {

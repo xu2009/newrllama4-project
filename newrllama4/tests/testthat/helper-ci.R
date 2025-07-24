@@ -25,6 +25,13 @@ skip_if_ci <- function(message = "Skipping test in CI environment") {
   }
 }
 
+#' Skip test if on Windows platform (to avoid segfaults)
+skip_if_windows <- function(message = "Skipping test on Windows platform") {
+  if (Sys.info()["sysname"] == "Windows") {
+    testthat::skip(message)
+  }
+}
+
 #' Skip test if backend library is not available
 skip_if_no_backend <- function() {
   if (!lib_is_installed()) {

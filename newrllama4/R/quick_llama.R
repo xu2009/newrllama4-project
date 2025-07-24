@@ -59,6 +59,11 @@ quick_llama <- function(prompt,
     stop("Prompt cannot be empty", call. = FALSE)
   }
   
+  # Check for empty strings
+  if (any(nchar(prompt) == 0)) {
+    stop("Prompt cannot be empty", call. = FALSE)
+  }
+  
   # Auto-detect stream mode if not specified
   if (is.null(stream)) {
     stream <- interactive()
