@@ -1,6 +1,6 @@
 #include <Rcpp.h>
 #include "proxy.h"
-#include <dlfcn.h>
+#include "platform_dlopen.h"
 
 using namespace Rcpp;
 
@@ -44,19 +44,19 @@ void r_newrllama_api_init(SEXP path_sexp) {
         stop("Invalid library path");
     }
     
-    void* handle = RTLD_DEFAULT;
+    platform_dlhandle_t handle = PLATFORM_RTLD_DEFAULT;
     bool success = newrllama_api_init(handle);
     
     if (!success) {
-        handle = dlopen(lib_path, RTLD_LAZY | RTLD_GLOBAL);
+        handle = platform_dlopen(lib_path, PLATFORM_RTLD_LAZY | PLATFORM_RTLD_GLOBAL);
         if (!handle) {
-            const char* error = dlerror();
+            const char* error = platform_dlerror();
             stop(std::string("Failed to open library: ") + (error ? error : "unknown error"));
         }
         
         success = newrllama_api_init(handle);
         if (!success) {
-            dlclose(handle);
+            platform_dlclose(handle);
             stop("Failed to initialize newrllama API: unable to load required symbols");
         }
     }

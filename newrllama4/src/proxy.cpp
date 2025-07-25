@@ -1,6 +1,6 @@
 #include "proxy.h"
 #include <stdexcept>
-#include <dlfcn.h>
+#include "platform_dlopen.h"
 #include <cstring>
 #include <string>
 
@@ -9,19 +9,19 @@ struct newrllama_api_ptrs newrllama_api;
 
 // 宏定义来简化符号加载过程
 #define LOAD_SYMBOL(handle, F) \
-    *(void**)(&newrllama_api.F) = dlsym(handle, "newrllama_" #F); \
+    *(void**)(&newrllama_api.F) = platform_dlsym(handle, "newrllama_" #F); \
     if (newrllama_api.F == NULL) { \
         /* Try with underscore prefix (macOS) */ \
-        *(void**)(&newrllama_api.F) = dlsym(handle, "_newrllama_" #F); \
+        *(void**)(&newrllama_api.F) = platform_dlsym(handle, "_newrllama_" #F); \
     } \
     if (newrllama_api.F == NULL) { \
-        const char* error = dlerror(); \
+        const char* error = platform_dlerror(); \
         throw std::runtime_error(std::string("Failed to load symbol: newrllama_" #F) + \
                                 (error ? std::string(" - ") + error : "")); \
     }
 
 // 初始化函数实现
-bool newrllama_api_init(void* handle) {
+bool newrllama_api_init(platform_dlhandle_t handle) {
     try {
         // 加载核心函数
         LOAD_SYMBOL(handle, backend_init);

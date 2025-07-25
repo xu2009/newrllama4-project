@@ -1,6 +1,7 @@
 // --- FILE: newrllama4/src/proxy.h ---
 #pragma once
 #include "newrllama_capi.h"
+#include "platform_dlopen.h"
 
 // 定义一个结构体来存放所有C-API的函数指针
 struct newrllama_api_ptrs {
@@ -56,7 +57,7 @@ struct newrllama_api_ptrs {
 extern struct newrllama_api_ptrs newrllama_api;
 
 // 声明一个初始化函数，用于在R中加载符号
-bool newrllama_api_init(void* handle);
+bool newrllama_api_init(platform_dlhandle_t handle);
 
 // 声明一个检查函数，用于确保符号已加载
 bool newrllama_api_is_loaded();
