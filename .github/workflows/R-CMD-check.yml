@@ -128,7 +128,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: /tmp/newrllama_cache
-          key: newrllama-libs-${{ runner.os }}-v1.0.55
+          key: newrllama-libs-${{ runner.os }}-v1.0.56
           restore-keys: newrllama-libs-${{ runner.os }}-
 
       # Install R dependencies manually for local package

@@ -1,0 +1,19 @@
+* installing *source* package ‘newrllama4’ ...
+** using staged installation
+** libs
+using C++ compiler: ‘Apple clang version 17.0.0 (clang-1700.0.13.5)’
+using C++17
+using SDK: ‘MacOSX15.5.sdk’
+make: Nothing to be done for `all'.
+make: `symbols.rds' is up to date.
+installing to /Users/yaoshengleo/Desktop/newrllama_4_project/newrllama4.Rcheck/00LOCK-newrllama4/00new/newrllama4/libs
+** R
+** byte-compile and prepare package for lazy loading
+** help
+*** installing help indices
+** building package indices
+** testing if installed package can be loaded from temporary location
+** checking absolute paths in shared objects and dynamic libraries
+** testing if installed package can be loaded from final location
+** testing if installed package keeps a record of temporary installation path
+* DONE (newrllama4)

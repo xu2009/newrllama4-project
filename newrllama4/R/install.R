@@ -1,8 +1,8 @@
 # --- FILE: newrllama4/R/install.R ---
 
 # Define library version and base URL
-.lib_version <- "1.0.55"
-.base_url <- "https://github.com/xu2009/newrllama4-project/releases/download/v1.0.55/"
+.lib_version <- "1.0.56"
+.base_url <- "https://github.com/xu2009/newrllama4-project/releases/download/v1.0.56/"
 
 # Get path for local library storage
 .lib_path <- function() {
@@ -23,7 +23,8 @@ lib_is_installed <- function() {
     return(length(lib_files) > 0)
   } else {
     lib_file <- if (sysname == "Windows") "newrllama.dll" else "libnewrllama.so"
-    return(file.exists(file.path(path, lib_file)))
+    # Check both root directory and lib/ subdirectory (for zip structure compatibility)
+    return(file.exists(file.path(path, lib_file)) || file.exists(file.path(path, "lib", lib_file)))
   }
 }
 
@@ -45,7 +46,17 @@ get_lib_path <- function() {
     return(lib_files[1])  # Return the first found dylib file
   } else {
     lib_file <- if (sysname == "Windows") "newrllama.dll" else "libnewrllama.so"
-    return(file.path(path, lib_file))
+    # Check root directory first, then lib/ subdirectory
+    root_path <- file.path(path, lib_file)
+    lib_subdir_path <- file.path(path, "lib", lib_file)
+    
+    if (file.exists(root_path)) {
+      return(root_path)
+    } else if (file.exists(lib_subdir_path)) {
+      return(lib_subdir_path)
+    } else {
+      stop("Library file not found after installation check passed.", call. = FALSE)
+    }
   }
 }
 

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head><title>R: R Interface to Llama.cpp with Runtime Library Loading and Model
+Download</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+<link rel="stylesheet" type="text/css" href="R.css" />
+</head><body><div class="container">
+<h1> R Interface to Llama.cpp with Runtime Library Loading and Model
+Download
+<img class="toplogo" src="../../../doc/html/Rlogo.svg" alt="[R logo]" />
+</h1>
+<hr/>
+<div style="text-align: center;">
+<a href="../../../doc/html/packages.html"><img class="arrow" src="../../../doc/html/left.jpg" alt="[Up]" /></a>
+<a href="../../../doc/html/index.html"><img class="arrow" src="../../../doc/html/up.jpg" alt="[Top]" /></a>
+</div><h2>Documentation for package &lsquo;newrllama4&rsquo; version 1.0.55</h2>
+
+<ul><li><a href="../DESCRIPTION">DESCRIPTION file</a>.</li>
+</ul>
+
+<h2>Help Pages</h2>
+
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="newrllama4-package.html">newrllama4-package</a></td>
+<td>R Interface to llama.cpp with Runtime Library Loading</td></tr>
+<tr><td style="width: 25%;"><a href="dot-check_model_memory_requirements.html">.check_model_memory_requirements</a></td>
+<td>Check memory requirements for model loading</td></tr>
+<tr><td style="width: 25%;"><a href="dot-detect_gpu_layers.html">.detect_gpu_layers</a></td>
+<td>Detect optimal GPU layers</td></tr>
+<tr><td style="width: 25%;"><a href="dot-download_model_to_cache.html">.download_model_to_cache</a></td>
+<td>Download a model to cache</td></tr>
+<tr><td style="width: 25%;"><a href="dot-download_with_retry.html">.download_with_retry</a></td>
+<td>Download with retry mechanism</td></tr>
+<tr><td style="width: 25%;"><a href="dot-ensure_model_loaded.html">.ensure_model_loaded</a></td>
+<td>Ensure model and context are loaded</td></tr>
+<tr><td style="width: 25%;"><a href="dot-ensure_quick_llama_ready.html">.ensure_quick_llama_ready</a></td>
+<td>Ensure backend is ready</td></tr>
+<tr><td style="width: 25%;"><a href="dot-generate_multiple.html">.generate_multiple</a></td>
+<td>Generate text for multiple prompts</td></tr>
+<tr><td style="width: 25%;"><a href="dot-generate_single.html">.generate_single</a></td>
+<td>Generate text for single prompt</td></tr>
+<tr><td style="width: 25%;"><a href="dot-get_cache_path.html">.get_cache_path</a></td>
+<td>Generate cache path for a model URL</td></tr>
+<tr><td style="width: 25%;"><a href="dot-get_default_model.html">.get_default_model</a></td>
+<td>Get default model URL</td></tr>
+<tr><td style="width: 25%;"><a href="dot-get_model_cache_dir.html">.get_model_cache_dir</a></td>
+<td>Get cache directory for models</td></tr>
+<tr><td style="width: 25%;"><a href="dot-is_backend_loaded.html">.is_backend_loaded</a></td>
+<td>Check if backend is loaded</td></tr>
+<tr><td style="width: 25%;"><a href="dot-is_url.html">.is_url</a></td>
+<td>Check if a string represents a URL</td></tr>
+<tr><td style="width: 25%;"><a href="dot-is_valid_gguf_file.html">.is_valid_gguf_file</a></td>
+<td>Check if file is a valid GGUF file</td></tr>
+<tr><td style="width: 25%;"><a href="dot-resolve_model_path.html">.resolve_model_path</a></td>
+<td>Resolve model path (download if needed)</td></tr>
+<tr><td style="width: 25%;"><a href="dot-verify_file_integrity.html">.verify_file_integrity</a></td>
+<td>Verify file integrity</td></tr>
+<tr><td style="width: 25%;"><a href="apply_chat_template.html">apply_chat_template</a></td>
+<td>Apply chat template</td></tr>
+<tr><td style="width: 25%;"><a href="backend_free.html">backend_free</a></td>
+<td>Free newrllama backend</td></tr>
+<tr><td style="width: 25%;"><a href="backend_init.html">backend_init</a></td>
+<td>Initialize newrllama backend</td></tr>
+<tr><td style="width: 25%;"><a href="context_create.html">context_create</a></td>
+<td>Create inference context</td></tr>
+<tr><td style="width: 25%;"><a href="detokenize.html">detokenize</a></td>
+<td>Detokenize tokens</td></tr>
+<tr><td style="width: 25%;"><a href="download_model.html">download_model</a></td>
+<td>Download a model manually</td></tr>
+<tr><td style="width: 25%;"><a href="generate.html">generate</a></td>
+<td>Generate text</td></tr>
+<tr><td style="width: 25%;"><a href="generate_parallel.html">generate_parallel</a></td>
+<td>Generate text in parallel</td></tr>
+<tr><td style="width: 25%;"><a href="get_lib_path.html">get_lib_path</a></td>
+<td>Get Backend Library Path</td></tr>
+<tr><td style="width: 25%;"><a href="get_model_cache_dir.html">get_model_cache_dir</a></td>
+<td>Get the model cache directory</td></tr>
+<tr><td style="width: 25%;"><a href="install_newrllama.html">install_newrllama</a></td>
+<td>Install newrllama Backend Library</td></tr>
+<tr><td style="width: 25%;"><a href="lib_is_installed.html">lib_is_installed</a></td>
+<td>Check if Backend Library is Installed</td></tr>
+<tr><td style="width: 25%;"><a href="model_load.html">model_load</a></td>
+<td>Load a language model (with smart download)</td></tr>
+<tr><td style="width: 25%;"><a href="newrllama4-package.html">newrllama4</a></td>
+<td>R Interface to llama.cpp with Runtime Library Loading</td></tr>
+<tr><td style="width: 25%;"><a href="quick_llama.html">quick_llama</a></td>
+<td>Quick LLaMA Inference</td></tr>
+<tr><td style="width: 25%;"><a href="quick_llama_reset.html">quick_llama_reset</a></td>
+<td>Reset quick_llama state</td></tr>
+<tr><td style="width: 25%;"><a href="tokenize.html">tokenize</a></td>
+<td>Tokenize text</td></tr>
+<tr><td style="width: 25%;"><a href="tokenize_test.html">tokenize_test</a></td>
+<td>Test tokenize function (debugging)</td></tr>
+</table>
+</div></body></html>

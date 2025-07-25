@@ -1,0 +1,39 @@
+.check_model_memory_requirements
+                        Check memory requirements for model loading
+.detect_gpu_layers      Detect optimal GPU layers
+.download_model_to_cache
+                        Download a model to cache
+.download_with_retry    Download with retry mechanism
+.ensure_model_loaded    Ensure model and context are loaded
+.ensure_quick_llama_ready
+                        Ensure backend is ready
+.generate_multiple      Generate text for multiple prompts
+.generate_single        Generate text for single prompt
+.get_cache_path         Generate cache path for a model URL
+.get_default_model      Get default model URL
+.get_model_cache_dir    Get cache directory for models
+.is_backend_loaded      Check if backend is loaded
+.is_url                 Check if a string represents a URL
+.is_valid_gguf_file     Check if file is a valid GGUF file
+.resolve_model_path     Resolve model path (download if needed)
+.verify_file_integrity
+                        Verify file integrity
+apply_chat_template     Apply chat template
+backend_free            Free newrllama backend
+backend_init            Initialize newrllama backend
+context_create          Create inference context
+detokenize              Detokenize tokens
+download_model          Download a model manually
+generate                Generate text
+generate_parallel       Generate text in parallel
+get_lib_path            Get Backend Library Path
+get_model_cache_dir     Get the model cache directory
+install_newrllama       Install newrllama Backend Library
+lib_is_installed        Check if Backend Library is Installed
+model_load              Load a language model (with smart download)
+newrllama4-package      R Interface to llama.cpp with Runtime Library
+                        Loading
+quick_llama             Quick LLaMA Inference
+quick_llama_reset       Reset quick_llama state
+tokenize                Tokenize text
+tokenize_test           Test tokenize function (debugging)
