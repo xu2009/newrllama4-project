@@ -92,12 +92,6 @@ get_lib_path <- function() {
 #'
 #' @export
 install_newrllama <- function() {
-  # CI mode protection: skip installation in Windows CI
-  if (isTRUE(getOption("newrllama4.ci_mode"))) {
-    message("Skipping backend installation in Windows CI mode")
-    return(invisible(NULL))
-  }
-  
   if (lib_is_installed()) {
     message("newrllama backend library is already installed.")
     return(invisible(NULL))
