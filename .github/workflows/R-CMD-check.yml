@@ -180,19 +180,14 @@ jobs:
       - name: R Package Check
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
-            echo "=== Windows CI Mode: Safe Static Checks ==="
+            echo "=== Windows CI Mode: Using R CMD build (The Bedrock Method) ==="
             
-            # Use the standard, public devtools::build() function.
-            # It's robust and designed for this exact purpose.
-            # It will compile C++ and build the source tarball, achieving our goal.
-            Rscript -e "
-              cat('Building source package on Windows (static check)...\n')
-              devtools::build(
-                pkg = '.', 
-                args = c('--no-manual', '--no-build-vignettes')
-              )
-              cat('✓ Windows static build check completed successfully.\n')
-            "
+            # Use the most basic command-line tool that spawns a new process
+            # and does NOT load the package into the current session.
+            # This avoids all hidden loading behaviors that cause segfaults.
+            R CMD build . --no-manual --no-build-vignettes
+            
+            echo "✓ Windows static build check completed successfully."
             
           else
             echo "=== Full CI Mode: Complete R CMD Check on ${{ runner.os }} ==="
