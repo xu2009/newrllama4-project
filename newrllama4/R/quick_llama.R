@@ -152,6 +152,11 @@ quick_llama_reset <- function() {
 
 #' Ensure backend is ready
 .ensure_quick_llama_ready <- function() {
+  # CI mode protection: fail gracefully in Windows CI
+  if (isTRUE(getOption("newrllama4.ci_mode"))) {
+    stop("Backend functionality is disabled in Windows CI mode", call. = FALSE)
+  }
+  
   # Check if backend library is installed
   if (!lib_is_installed()) {
     message("Backend library not found. Installing...")

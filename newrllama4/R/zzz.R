@@ -4,6 +4,18 @@
 .pkg_env <- new.env(parent = emptyenv())
 
 .onAttach <- function(libname, pkgname) {
+  # Windows CI protection: skip all initialization that might cause segfaults
+  if (.Platform$OS.type == "windows" && 
+      nzchar(Sys.getenv("NEWRLLAMA_WINDOWS_CI"))) {
+    
+    # Set a package-level flag to indicate CI mode
+    options(newrllama4.ci_mode = TRUE)
+    
+    # Skip dangerous initialization and return early
+    packageStartupMessage("newrllama4: Running in Windows CI mode - backend initialization skipped")
+    return(invisible())
+  }
+  
   if (lib_is_installed()) {
     full_lib_path <- get_lib_path()
     
