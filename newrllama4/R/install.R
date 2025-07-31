@@ -1,8 +1,8 @@
 # --- FILE: newrllama4/R/install.R ---
 
 # Define library version and base URL
-.lib_version <- "1.0.57"
-.base_url <- "https://github.com/xu2009/newrllama4-project/releases/download/v1.0.57/"
+.lib_version <- "1.0.62"
+.base_url <- "https://github.com/xu2009/newrllama4-project/releases/download/v1.0.62/"
 
 # Get path for local library storage
 .lib_path <- function() {
@@ -11,7 +11,20 @@
   file.path(path, .lib_version) 
 }
 
-# Check if library is installed
+#' Check if Backend Library is Installed
+#'
+#' Checks whether the newrllama backend library has been downloaded and installed.
+#'
+#' @return Logical value indicating whether the backend library is installed.
+#' @export
+#' @examples
+#' # Check if backend library is installed
+#' if (lib_is_installed()) {
+#'   message("Backend library is ready")
+#' } else {
+#'   message("Please run install_newrllama() first")
+#' }
+#' @seealso \code{\link{install_newrllama}}, \code{\link{get_lib_path}}
 lib_is_installed <- function() {
   path <- .lib_path()
   # Check if platform-specific library file exists
@@ -28,7 +41,23 @@ lib_is_installed <- function() {
   }
 }
 
-# Get full path of installed library
+#' Get Backend Library Path
+#'
+#' Returns the full path to the installed newrllama backend library.
+#'
+#' @return Character string containing the path to the backend library file.
+#' @details This function will throw an error if the backend library is not installed.
+#'   Use \code{\link{lib_is_installed}} to check installation status first.
+#' @export
+#' @examples
+#' \dontrun{
+#' # Get the library path (only if installed)
+#' if (lib_is_installed()) {
+#'   lib_path <- get_lib_path()
+#'   message("Library is at: ", lib_path)
+#' }
+#' }
+#' @seealso \code{\link{lib_is_installed}}, \code{\link{install_newrllama}}
 get_lib_path <- function() {
   if (!lib_is_installed()) {
     stop("newrllama backend library is not installed. Please run install_newrllama() first.", call. = FALSE)
@@ -90,7 +119,17 @@ get_lib_path <- function() {
 #' This function downloads and installs the pre-compiled C++ backend library
 #' required for the newrllama4 package to function.
 #'
+#' @details This function downloads platform-specific pre-compiled binaries from GitHub releases.
+#'   The backend library is stored in the user's data directory and loaded at runtime.
+#'   Internet connection is required for the initial download.
+#' @return Returns NULL invisibly. Called for side effects.
 #' @export
+#' @examples
+#' \dontrun{
+#' # Install the backend library
+#' install_newrllama()
+#' }
+#' @seealso \code{\link{lib_is_installed}}, \code{\link{get_lib_path}}
 install_newrllama <- function() {
   if (lib_is_installed()) {
     message("newrllama backend library is already installed.")
