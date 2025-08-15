@@ -32,6 +32,63 @@ void set_error(const char** error_message, const std::string& msg) {
     } 
 }
 
+// Verbosity-controlled log callback
+static thread_local int current_verbosity = 1; // Default verbosity level
+static thread_local ggml_log_callback original_log_callback = nullptr;
+static thread_local void* original_log_user_data = nullptr;
+
+static void verbosity_log_callback(ggml_log_level level, const char* text, void* user_data) {
+    int verbosity = current_verbosity;
+    
+    // Filter messages based on verbosity level
+    bool should_log = false;
+    switch (verbosity) {
+        case 0: // Show all (DEBUG + INFO + WARN + ERROR)
+            should_log = true;
+            break;
+        case 1: // Show important info (INFO + WARN + ERROR)
+            should_log = (level >= GGML_LOG_LEVEL_INFO);
+            break;
+        case 2: // Show warnings and errors only (WARN + ERROR)
+            should_log = (level >= GGML_LOG_LEVEL_WARN);
+            break;
+        case 3: // Show errors only or silent
+            should_log = (level >= GGML_LOG_LEVEL_ERROR);
+            break;
+        default:
+            should_log = (level >= GGML_LOG_LEVEL_INFO); // Fallback to level 1
+            break;
+    }
+    
+    if (should_log && original_log_callback) {
+        original_log_callback(level, text, original_log_user_data);
+    }
+}
+
+// Set verbosity for logging
+static void set_log_verbosity(int verbosity) {
+    current_verbosity = verbosity;
+    
+    // Store original callback if not already stored
+    if (original_log_callback == nullptr) {
+        // Note: We can't easily get the current callback, so we'll assume default behavior
+        original_log_callback = nullptr; // Will use default stderr output
+        original_log_user_data = nullptr;
+    }
+    
+    // Set our custom callback
+    llama_log_set(verbosity_log_callback, nullptr);
+}
+
+// Restore original logging
+static void restore_log_callback() {
+    if (original_log_callback) {
+        llama_log_set(original_log_callback, original_log_user_data);
+    } else {
+        llama_log_set(nullptr, nullptr); // Restore default behavior
+    }
+}
+
 static char* string_to_c_str(const std::string& s) { 
     char* cstr = new char[s.length() + 1]; 
     std::strcpy(cstr, s.c_str()); 
@@ -80,11 +137,15 @@ NEWRLLAMA_API newrllama_error_code newrllama_model_load(const char* model_path, 
 }
 
 // Enhanced model loading with memory checking
-NEWRLLAMA_API newrllama_error_code newrllama_model_load_safe(const char* model_path, int n_gpu_layers, bool use_mmap, bool use_mlock, bool check_memory, newrllama_model_handle* model_handle_out, const char** error_message) {
+NEWRLLAMA_API newrllama_error_code newrllama_model_load_safe(const char* model_path, int n_gpu_layers, bool use_mmap, bool use_mlock, bool check_memory, int verbosity, newrllama_model_handle* model_handle_out, const char** error_message) {
+    // Set verbosity level for this function call
+    set_log_verbosity(verbosity);
+    
     try {
         // Check if file exists and is valid
         std::ifstream file(model_path, std::ios::binary);
         if (!file.is_open()) {
+            restore_log_callback();
             set_error(error_message, std::string("Cannot open model file: ") + model_path);
             return NEWRLLAMA_ERROR;
         }
@@ -98,6 +159,7 @@ NEWRLLAMA_API newrllama_error_code newrllama_model_load_safe(const char* model_p
         char magic[4];
         file.read(magic, 4);
         if (magic[0] != 'G' || magic[1] != 'G' || magic[2] != 'U' || magic[3] != 'F') {
+            restore_log_callback();
             set_error(error_message, "Invalid GGUF file format");
             return NEWRLLAMA_ERROR;
         }
@@ -112,6 +174,7 @@ NEWRLLAMA_API newrllama_error_code newrllama_model_load_safe(const char* model_p
             
             bool memory_ok = newrllama_check_memory_available(estimated_memory, error_message);
             if (!memory_ok) {
+                restore_log_callback();
                 set_error(error_message, "Insufficient memory for model loading");
                 return NEWRLLAMA_ERROR;
             }
@@ -125,17 +188,21 @@ NEWRLLAMA_API newrllama_error_code newrllama_model_load_safe(const char* model_p
         
         llama_model* model = llama_model_load_from_file(model_path, model_params);
         if (model == nullptr) {
+            restore_log_callback();
             set_error(error_message, std::string("Failed to load model from path: ") + model_path + ". This may be due to insufficient memory, corrupted file, or unsupported model format.");
             return NEWRLLAMA_ERROR;
         }
         
         *model_handle_out = model;
+        restore_log_callback();
         return NEWRLLAMA_SUCCESS;
         
     } catch (const std::exception& e) {
+        restore_log_callback();
         set_error(error_message, std::string("Exception during model loading: ") + e.what());
         return NEWRLLAMA_ERROR;
     } catch (...) {
+        restore_log_callback();
         set_error(error_message, "Unknown exception during model loading");
         return NEWRLLAMA_ERROR;
     }
@@ -145,8 +212,12 @@ NEWRLLAMA_API void newrllama_model_free(newrllama_model_handle model) {
     if (model) llama_model_free(model); 
 }
 
-NEWRLLAMA_API newrllama_error_code newrllama_context_create(newrllama_model_handle model, int n_ctx, int n_threads, int n_seq_max, newrllama_context_handle* context_handle_out, const char** error_message) { 
+NEWRLLAMA_API newrllama_error_code newrllama_context_create(newrllama_model_handle model, int n_ctx, int n_threads, int n_seq_max, int verbosity, newrllama_context_handle* context_handle_out, const char** error_message) { 
+    // Set verbosity level for this function call
+    set_log_verbosity(verbosity);
+    
     if (!model) { 
+        restore_log_callback();
         set_error(error_message, "Model handle is null."); 
         return NEWRLLAMA_ERROR; 
     } 
@@ -156,10 +227,12 @@ NEWRLLAMA_API newrllama_error_code newrllama_context_create(newrllama_model_hand
     ctx_params.n_seq_max = n_seq_max; 
     llama_context* ctx = llama_init_from_model(model, ctx_params); 
     if (ctx == nullptr) { 
+        restore_log_callback();
         set_error(error_message, "Failed to create context from model."); 
         return NEWRLLAMA_ERROR; 
     } 
     *context_handle_out = ctx; 
+    restore_log_callback();
     return NEWRLLAMA_SUCCESS; 
 }
 

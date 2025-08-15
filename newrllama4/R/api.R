@@ -46,6 +46,13 @@ backend_free <- function() {
 #'   Useful for updating to newer model versions
 #' @param verify_integrity Verify file integrity using checksums when available (default: TRUE)
 #' @param check_memory Check if sufficient system memory is available before loading (default: TRUE)
+#' @param verbosity Control verbosity of output during model loading (default: 1L). 
+#'   \itemize{
+#'     \item \code{0} - Show all information (debug + info + warnings + errors)
+#'     \item \code{1} - Show important information (info + warnings + errors)
+#'     \item \code{2} - Show minimal information (warnings + errors only)
+#'     \item \code{3} - Show errors only or silent
+#'   }
 #' @return A model object (external pointer) that can be used with \code{\link{context_create}}, 
 #'   \code{\link{tokenize}}, and other model functions
 #' @export
@@ -72,11 +79,14 @@ backend_free <- function() {
 #' model <- model_load("/path/to/large_model.gguf", 
 #'                     n_gpu_layers = -1,     # All layers on GPU
 #'                     use_mlock = TRUE)      # Lock in memory
+#' 
+#' # Load with minimal verbosity (quiet mode)
+#' model <- model_load("/path/to/model.gguf", verbosity = 2L)
 #' }
 #' @seealso \code{\link{context_create}}, \code{\link{download_model}}, \code{\link{get_model_cache_dir}}
 model_load <- function(model_path, cache_dir = NULL, n_gpu_layers = 0L, use_mmap = TRUE, 
                        use_mlock = FALSE, show_progress = TRUE, force_redownload = FALSE, 
-                       verify_integrity = TRUE, check_memory = TRUE) {
+                       verify_integrity = TRUE, check_memory = TRUE, verbosity = 1L) {
   .ensure_backend_loaded()
   
   # Resolve model path (download if needed)
@@ -93,7 +103,8 @@ model_load <- function(model_path, cache_dir = NULL, n_gpu_layers = 0L, use_mmap
         as.integer(n_gpu_layers), 
         as.logical(use_mmap),
         as.logical(use_mlock),
-        as.logical(check_memory))
+        as.logical(check_memory),
+        as.integer(verbosity))
 }
 
 #' Create Inference Context for Text Generation
@@ -111,6 +122,13 @@ model_load <- function(model_path, cache_dir = NULL, n_gpu_layers = 0L, use_mmap
 #'   of available CPU cores for optimal performance. Only affects CPU computation
 #' @param n_seq_max Maximum number of parallel sequences (default: 1). Used for batch
 #'   processing multiple conversations simultaneously. Higher values require more memory
+#' @param verbosity Control verbosity of output during context creation (default: 1L).
+#'   \itemize{
+#'     \item \code{0} - Show all information (debug + info + warnings + errors)
+#'     \item \code{1} - Show important information (info + warnings + errors)
+#'     \item \code{2} - Show minimal information (warnings + errors only)
+#'     \item \code{3} - Show errors only or silent
+#'   }
 #' @return A context object (external pointer) used for text generation with \code{\link{generate}}
 #' @export
 #' @examples
@@ -127,9 +145,12 @@ model_load <- function(model_path, cache_dir = NULL, n_gpu_layers = 0L, use_mmap
 #' 
 #' # Context for batch processing multiple conversations
 #' batch_ctx <- context_create(model, n_ctx = 2048, n_seq_max = 4)
+#' 
+#' # Create context with minimal verbosity (quiet mode)
+#' quiet_ctx <- context_create(model, verbosity = 2L)
 #' }
 #' @seealso \code{\link{model_load}}, \code{\link{generate}}, \code{\link{tokenize}}
-context_create <- function(model, n_ctx = 2048L, n_threads = 4L, n_seq_max = 1L) {
+context_create <- function(model, n_ctx = 2048L, n_threads = 4L, n_seq_max = 1L, verbosity = 1L) {
   .ensure_backend_loaded()
   if (!inherits(model, "newrllama_model")) {
     stop("Expected a newrllama_model object", call. = FALSE)
@@ -139,7 +160,8 @@ context_create <- function(model, n_ctx = 2048L, n_threads = 4L, n_seq_max = 1L)
         model,
         as.integer(n_ctx),
         as.integer(n_threads), 
-        as.integer(n_seq_max))
+        as.integer(n_seq_max),
+        as.integer(verbosity))
 }
 
 #' Convert Text to Token IDs

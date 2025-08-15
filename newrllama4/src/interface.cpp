@@ -99,7 +99,7 @@ SEXP r_model_load(SEXP model_path, SEXP n_gpu_layers, SEXP use_mmap, SEXP use_ml
     return p;
 }
 
-SEXP r_model_load_safe(SEXP model_path, SEXP n_gpu_layers, SEXP use_mmap, SEXP use_mlock, SEXP check_memory) {
+SEXP r_model_load_safe(SEXP model_path, SEXP n_gpu_layers, SEXP use_mmap, SEXP use_mlock, SEXP check_memory, SEXP verbosity) {
     if (!newrllama_api_is_loaded()) {
         stop("Backend library is not loaded. Please run install_newrllama() first.");
     }
@@ -108,10 +108,11 @@ SEXP r_model_load_safe(SEXP model_path, SEXP n_gpu_layers, SEXP use_mmap, SEXP u
     bool use_mmap_bool = as<bool>(use_mmap);
     bool use_mlock_bool = as<bool>(use_mlock);
     bool check_memory_bool = as<bool>(check_memory);
+    int verbosity_int = as<int>(verbosity);
     
     const char* error_message = nullptr;
     newrllama_model_handle handle = nullptr;
-    check_error(newrllama_api.model_load_safe(model_path_str.c_str(), n_gpu_layers_int, use_mmap_bool, use_mlock_bool, check_memory_bool, &handle, &error_message), error_message);
+    check_error(newrllama_api.model_load_safe(model_path_str.c_str(), n_gpu_layers_int, use_mmap_bool, use_mlock_bool, check_memory_bool, verbosity_int, &handle, &error_message), error_message);
 
     SEXP p = R_MakeExternalPtr(handle, R_NilValue, R_NilValue);
     PROTECT(p);
@@ -151,7 +152,7 @@ SEXP r_check_memory_available(SEXP required_bytes) {
     return LogicalVector::create(available);
 }
 
-SEXP r_context_create(SEXP model_ptr, SEXP n_ctx, SEXP n_threads, SEXP n_seq_max) {
+SEXP r_context_create(SEXP model_ptr, SEXP n_ctx, SEXP n_threads, SEXP n_seq_max, SEXP verbosity) {
     if (!newrllama_api_is_loaded()) {
         stop("Backend library is not loaded. Please run install_newrllama() first.");
     }
@@ -159,9 +160,10 @@ SEXP r_context_create(SEXP model_ptr, SEXP n_ctx, SEXP n_threads, SEXP n_seq_max
     int n_ctx_int = as<int>(n_ctx);
     int n_threads_int = as<int>(n_threads);
     int n_seq_max_int = as<int>(n_seq_max);
+    int verbosity_int = as<int>(verbosity);
     const char* error_message = nullptr;
     newrllama_context_handle handle = nullptr;
-    check_error(newrllama_api.context_create(model, n_ctx_int, n_threads_int, n_seq_max_int, &handle, &error_message), error_message);
+    check_error(newrllama_api.context_create(model, n_ctx_int, n_threads_int, n_seq_max_int, verbosity_int, &handle, &error_message), error_message);
     
     SEXP p = R_MakeExternalPtr(handle, R_NilValue, R_NilValue);
     PROTECT(p);

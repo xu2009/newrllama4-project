@@ -13,8 +13,8 @@ extern "C" {
   SEXP r_backend_init();
   SEXP r_backend_free();
   SEXP r_model_load(SEXP model_path, SEXP n_gpu_layers, SEXP use_mmap, SEXP use_mlock);
-  SEXP r_model_load_safe(SEXP model_path, SEXP n_gpu_layers, SEXP use_mmap, SEXP use_mlock, SEXP check_memory);
-  SEXP r_context_create(SEXP model_ptr, SEXP n_ctx, SEXP n_threads, SEXP n_seq_max);
+  SEXP r_model_load_safe(SEXP model_path, SEXP n_gpu_layers, SEXP use_mmap, SEXP use_mlock, SEXP check_memory, SEXP verbosity);
+  SEXP r_context_create(SEXP model_ptr, SEXP n_ctx, SEXP n_threads, SEXP n_seq_max, SEXP verbosity);
   
   // Memory checking functions
   SEXP r_estimate_model_memory(SEXP model_path);
@@ -62,8 +62,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"c_r_backend_init", (DL_FUNC) &r_backend_init, 0},
   {"c_r_backend_free", (DL_FUNC) &r_backend_free, 0},
   {"c_r_model_load", (DL_FUNC) &r_model_load, 4},
-  {"c_r_model_load_safe", (DL_FUNC) &r_model_load_safe, 5},
-  {"c_r_context_create", (DL_FUNC) &r_context_create, 4},
+  {"c_r_model_load_safe", (DL_FUNC) &r_model_load_safe, 6},
+  {"c_r_context_create", (DL_FUNC) &r_context_create, 5},
   
   // Memory checking functions
   {"c_r_estimate_model_memory", (DL_FUNC) &r_estimate_model_memory, 1},
