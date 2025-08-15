@@ -71,3 +71,6 @@ creative_response <- quick_llama("Tell me a story",
                                  max_tokens = 200)
 }
 }
+\seealso{
+\code{\link{model_load}}, \code{\link{generate}}, \code{\link{generate_parallel}}, \code{\link{install_newrllama}}
+}

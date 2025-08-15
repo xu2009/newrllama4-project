@@ -21,33 +21,59 @@ backend_free <- function() {
   }
 }
 
-#' Load a language model (with smart download)
+#' Load Language Model with Automatic Download Support
 #'
-#' @param model_path Path to the GGUF model file or a URL (supports hf://, ollama://, https://, etc.)
-#' @param cache_dir Custom cache directory for downloaded models (default: NULL, uses system cache)
-#' @param n_gpu_layers Number of layers to offload to GPU (default: 0)
-#' @param use_mmap Whether to use memory mapping (default: TRUE)
-#' @param use_mlock Whether to use memory locking (default: FALSE)
-#' @param show_progress Whether to show download progress for URLs (default: TRUE)
-#' @param force_redownload Force re-download even if cached version exists (default: FALSE)
-#' @param verify_integrity Verify file integrity before loading (default: TRUE)
-#' @param check_memory Check if sufficient memory is available before loading (default: TRUE)
-#' @return A model object (external pointer)
+#' Loads a GGUF format language model from local path or URL with intelligent caching
+#' and download management. Supports various model sources including Hugging Face, 
+#' Ollama repositories, and direct HTTPS URLs. Models are automatically cached to 
+#' avoid repeated downloads.
+#'
+#' @param model_path Path to local GGUF model file or URL. Supported URL formats:
+#'   \itemize{
+#'     \item \code{https://} - Direct download from web servers
+#'     \item \code{hf://} - Hugging Face model repository (hf://username/model/file.gguf)
+#'     \item \code{ollama://} - Ollama model format (experimental)
+#'   }
+#' @param cache_dir Custom directory for downloaded models (default: NULL uses system cache directory)
+#' @param n_gpu_layers Number of transformer layers to offload to GPU (default: 0 for CPU-only). 
+#'   Set to -1 to offload all layers, or a positive integer for partial offloading
+#' @param use_mmap Enable memory mapping for efficient model loading (default: TRUE). 
+#'   Disable only if experiencing memory issues
+#' @param use_mlock Lock model in physical memory to prevent swapping (default: FALSE). 
+#'   Enable for better performance but requires sufficient RAM
+#' @param show_progress Display download progress bar for remote models (default: TRUE)
+#' @param force_redownload Force re-download even if cached version exists (default: FALSE). 
+#'   Useful for updating to newer model versions
+#' @param verify_integrity Verify file integrity using checksums when available (default: TRUE)
+#' @param check_memory Check if sufficient system memory is available before loading (default: TRUE)
+#' @return A model object (external pointer) that can be used with \code{\link{context_create}}, 
+#'   \code{\link{tokenize}}, and other model functions
 #' @export
 #' @examples
 #' \dontrun{
-#' # Load local model
-#' model <- model_load("/path/to/model.gguf")
+#' # Load local GGUF model
+#' model <- model_load("/path/to/my_model.gguf")
 #' 
-#' # Auto-download from URL
-#' model <- model_load("https://example.com/model.gguf")
+#' # Download from Hugging Face and cache locally
+#' model <- model_load("hf://microsoft/DialoGPT-medium/model.gguf")
+#' 
+#' # Load with GPU acceleration (offload 10 layers)
+#' model <- model_load("/path/to/model.gguf", n_gpu_layers = 10)
 #' 
 #' # Download to custom cache directory
-#' model <- model_load("https://example.com/model.gguf", cache_dir = "~/my_models")
+#' model <- model_load("https://example.com/model.gguf", 
+#'                     cache_dir = "~/my_models")
 #' 
-#' # Force re-download
-#' model <- model_load("https://example.com/model.gguf", force_redownload = TRUE)
+#' # Force fresh download (ignore cache)
+#' model <- model_load("https://example.com/model.gguf", 
+#'                     force_redownload = TRUE)
+#' 
+#' # High-performance settings for large models
+#' model <- model_load("/path/to/large_model.gguf", 
+#'                     n_gpu_layers = -1,     # All layers on GPU
+#'                     use_mlock = TRUE)      # Lock in memory
 #' }
+#' @seealso \code{\link{context_create}}, \code{\link{download_model}}, \code{\link{get_model_cache_dir}}
 model_load <- function(model_path, cache_dir = NULL, n_gpu_layers = 0L, use_mmap = TRUE, 
                        use_mlock = FALSE, show_progress = TRUE, force_redownload = FALSE, 
                        verify_integrity = TRUE, check_memory = TRUE) {
@@ -70,14 +96,39 @@ model_load <- function(model_path, cache_dir = NULL, n_gpu_layers = 0L, use_mmap
         as.logical(check_memory))
 }
 
-#' Create inference context
+#' Create Inference Context for Text Generation
 #'
-#' @param model A model object returned by model_load()
-#' @param n_ctx Context size (default: 2048)
-#' @param n_threads Number of threads (default: 4)  
-#' @param n_seq_max Maximum number of sequences (default: 1)
-#' @return A context object (external pointer)
+#' Creates a context object that manages the computational state for text generation.
+#' The context maintains the conversation history and manages memory efficiently for
+#' processing input tokens and generating responses. Each model can have multiple
+#' contexts with different settings.
+#'
+#' @param model A model object returned by \code{\link{model_load}}
+#' @param n_ctx Maximum context length in tokens (default: 2048). This determines how many
+#'   tokens of conversation history can be maintained. Larger values require more memory
+#'   but allow for longer conversations. Must not exceed the model's maximum context length
+#' @param n_threads Number of CPU threads for inference (default: 4). Set to the number
+#'   of available CPU cores for optimal performance. Only affects CPU computation
+#' @param n_seq_max Maximum number of parallel sequences (default: 1). Used for batch
+#'   processing multiple conversations simultaneously. Higher values require more memory
+#' @return A context object (external pointer) used for text generation with \code{\link{generate}}
 #' @export
+#' @examples
+#' \dontrun{
+#' # Load model and create basic context
+#' model <- model_load("path/to/model.gguf")
+#' ctx <- context_create(model)
+#' 
+#' # Create context with larger buffer for long conversations
+#' long_ctx <- context_create(model, n_ctx = 4096)
+#' 
+#' # High-performance context with more threads
+#' fast_ctx <- context_create(model, n_ctx = 2048, n_threads = 8)
+#' 
+#' # Context for batch processing multiple conversations
+#' batch_ctx <- context_create(model, n_ctx = 2048, n_seq_max = 4)
+#' }
+#' @seealso \code{\link{model_load}}, \code{\link{generate}}, \code{\link{tokenize}}
 context_create <- function(model, n_ctx = 2048L, n_threads = 4L, n_seq_max = 1L) {
   .ensure_backend_loaded()
   if (!inherits(model, "newrllama_model")) {
@@ -91,13 +142,39 @@ context_create <- function(model, n_ctx = 2048L, n_threads = 4L, n_seq_max = 1L)
         as.integer(n_seq_max))
 }
 
-#' Tokenize text
+#' Convert Text to Token IDs
 #'
-#' @param model A model object
-#' @param text Text to tokenize
-#' @param add_special Whether to add special tokens (default: TRUE)
-#' @return Integer vector of token IDs
+#' Converts text into a sequence of integer token IDs that the language model can process.
+#' This is the first step in text generation, as models work with tokens rather than raw text.
+#' Different models may use different tokenization schemes (BPE, SentencePiece, etc.).
+#'
+#' @param model A model object created with \code{\link{model_load}}
+#' @param text Character string or vector to tokenize. Can be a single text or multiple texts
+#' @param add_special Whether to add special tokens like BOS (Beginning of Sequence) and EOS
+#'   (End of Sequence) tokens (default: TRUE). These tokens help models understand text boundaries
+#' @return Integer vector of token IDs corresponding to the input text. These can be used with
+#'   \code{\link{generate}} for text generation or \code{\link{detokenize}} to convert back to text
 #' @export
+#' @examples
+#' \dontrun{
+#' # Load model
+#' model <- model_load("path/to/model.gguf")
+#' 
+#' # Basic tokenization
+#' tokens <- tokenize(model, "Hello, world!")
+#' print(tokens)  # e.g., c(15339, 11, 1917, 0)
+#' 
+#' # Tokenize without special tokens (for model inputs)
+#' raw_tokens <- tokenize(model, "Continue this text", add_special = FALSE)
+#' 
+#' # Tokenize multiple texts
+#' batch_tokens <- tokenize(model, c("First text", "Second text"))
+#' 
+#' # Check tokenization of specific phrases
+#' question_tokens <- tokenize(model, "What is AI?")
+#' print(length(question_tokens))  # Number of tokens
+#' }
+#' @seealso \code{\link{detokenize}}, \code{\link{generate}}, \code{\link{model_load}}
 tokenize <- function(model, text, add_special = TRUE) {
   .ensure_backend_loaded()
   if (!inherits(model, "newrllama_model")) {
@@ -110,12 +187,41 @@ tokenize <- function(model, text, add_special = TRUE) {
         as.logical(add_special))
 }
 
-#' Detokenize tokens
+#' Convert Token IDs Back to Text
 #'
-#' @param model A model object
-#' @param tokens Integer vector of token IDs  
-#' @return Detokenized text string
+#' Converts a sequence of integer token IDs back into human-readable text. This is the 
+#' inverse operation of tokenization and is typically used to convert model output tokens
+#' into text that can be displayed to users.
+#'
+#' @param model A model object created with \code{\link{model_load}}. Must be the same model
+#'   that was used for tokenization to ensure proper decoding
+#' @param tokens Integer vector of token IDs to convert back to text. These are typically
+#'   generated by \code{\link{tokenize}} or \code{\link{generate}}
+#' @return Character string containing the decoded text corresponding to the input tokens
 #' @export
+#' @examples
+#' \dontrun{
+#' # Load model
+#' model <- model_load("path/to/model.gguf")
+#' 
+#' # Tokenize then detokenize (round-trip)
+#' original_text <- "Hello, how are you today?"
+#' tokens <- tokenize(model, original_text)
+#' recovered_text <- detokenize(model, tokens)
+#' print(recovered_text)  # Should match original_text
+#' 
+#' # Detokenize generated tokens
+#' ctx <- context_create(model)
+#' input_tokens <- tokenize(model, "The weather is")
+#' output_tokens <- generate(ctx, input_tokens, max_tokens = 10)
+#' generated_text <- detokenize(model, output_tokens)
+#' 
+#' # Inspect individual tokens
+#' single_token <- c(123)  # Some token ID
+#' token_text <- detokenize(model, single_token)
+#' print(paste("Token", single_token, "represents:", token_text))
+#' }
+#' @seealso \code{\link{tokenize}}, \code{\link{generate}}, \code{\link{model_load}}
 detokenize <- function(model, tokens) {
   .ensure_backend_loaded()
   if (!inherits(model, "newrllama_model")) {
@@ -127,14 +233,38 @@ detokenize <- function(model, tokens) {
         as.integer(tokens))
 }
 
-#' Apply chat template
+#' Apply Chat Template to Format Conversations
 #'
-#' @param model A model object
-#' @param messages List of chat messages, each with 'role' and 'content'
-#' @param template Optional custom template (default: NULL, use model's template)
-#' @param add_assistant Whether to add assistant prompt (default: TRUE)
-#' @return Formatted prompt string
+#' Formats conversation messages using the model's built-in chat template or a custom template.
+#' This is essential for chat models that expect specific formatting for multi-turn conversations.
+#'
+#' @param model A model object created with \code{\link{model_load}}
+#' @param messages List of chat messages, each with 'role' and 'content' fields. 
+#'   Role should be 'user', 'assistant', or 'system'
+#' @param template Optional custom template string (default: NULL, uses model's built-in template)
+#' @param add_assistant Whether to add assistant prompt suffix for response generation (default: TRUE)
+#' @return Formatted prompt string ready for text generation
 #' @export
+#' @examples
+#' \dontrun{
+#' # Load a chat model
+#' model <- model_load("path/to/chat_model.gguf")
+#' 
+#' # Format a conversation
+#' messages <- list(
+#'   list(role = "system", content = "You are a helpful assistant."),
+#'   list(role = "user", content = "What is machine learning?"),
+#'   list(role = "assistant", content = "Machine learning is..."),
+#'   list(role = "user", content = "Give me an example.")
+#' )
+#' 
+#' # Apply chat template
+#' formatted_prompt <- apply_chat_template(model, messages)
+#' 
+#' # Generate response
+#' response <- quick_llama(formatted_prompt)
+#' }
+#' @seealso \code{\link{model_load}}, \code{\link{quick_llama}}, \code{\link{generate}}
 apply_chat_template <- function(model, messages, template = NULL, add_assistant = TRUE) {
   .ensure_backend_loaded()
   if (!inherits(model, "newrllama_model")) {
@@ -148,19 +278,43 @@ apply_chat_template <- function(model, messages, template = NULL, add_assistant 
         as.logical(add_assistant))
 }
 
-#' Generate text
+#' Generate Text Using Language Model Context
 #'
-#' @param context A context object
-#' @param tokens Input tokens or prompt text
-#' @param max_tokens Maximum tokens to generate (default: 100)
-#' @param top_k Top-k sampling (default: 40)
-#' @param top_p Top-p sampling (default: 0.9)
-#' @param temperature Sampling temperature (default: 0.8)
-#' @param repeat_last_n Repetition penalty last n tokens (default: 64)
-#' @param penalty_repeat Repetition penalty strength (default: 1.1)
-#' @param seed Random seed (default: -1 for random)
-#' @return Generated text
+#' Generates text using a loaded language model context. This is a low-level function
+#' that requires pre-tokenized input. For easier text generation from plain text,
+#' consider using \code{\link{quick_llama}} instead.
+#'
+#' @param context A context object created with \code{\link{context_create}}
+#' @param tokens Integer vector of input tokens. Use \code{\link{tokenize}} to convert text to tokens
+#' @param max_tokens Maximum number of tokens to generate (default: 100). Higher values produce longer responses
+#' @param top_k Top-k sampling parameter (default: 40). Limits vocabulary to k most likely tokens. Use 0 to disable
+#' @param top_p Top-p (nucleus) sampling parameter (default: 0.9). Cumulative probability threshold for token selection
+#' @param temperature Sampling temperature (default: 0.8). Higher values (>1) increase randomness, lower values (<1) make output more deterministic
+#' @param repeat_last_n Number of recent tokens to consider for repetition penalty (default: 64)
+#' @param penalty_repeat Repetition penalty strength (default: 1.1). Values >1 discourage repetition, <1 encourage it
+#' @param seed Random seed for reproducible generation (default: -1 for random). Use positive integers for deterministic output
+#' @return Character string containing the generated text
 #' @export
+#' @examples
+#' \dontrun{
+#' # Load model and create context
+#' model <- model_load("path/to/model.gguf")
+#' ctx <- context_create(model, n_ctx = 2048)
+#' 
+#' # Tokenize input text
+#' tokens <- tokenize(model, "Hello, how are you?")
+#' 
+#' # Generate response
+#' response <- generate(ctx, tokens, max_tokens = 50, temperature = 0.7)
+#' 
+#' # Creative writing with higher temperature
+#' creative_tokens <- tokenize(model, "Once upon a time")
+#' story <- generate(ctx, creative_tokens, max_tokens = 200, temperature = 1.2)
+#' 
+#' # Deterministic generation with seed
+#' predictable <- generate(ctx, tokens, max_tokens = 30, temperature = 0.5, seed = 42)
+#' }
+#' @seealso \code{\link{quick_llama}}, \code{\link{generate_parallel}}, \code{\link{tokenize}}, \code{\link{context_create}}
 generate <- function(context, tokens, max_tokens = 100L, top_k = 40L, top_p = 0.9, 
                      temperature = 0.8, repeat_last_n = 64L, penalty_repeat = 1.1, seed = -1L) {
   .ensure_backend_loaded()
@@ -288,6 +442,7 @@ get_model_cache_dir <- function() {
 #' Check if a string represents a URL
 #' @param path The path/URL to check
 #' @return TRUE if it's a URL, FALSE otherwise
+#' @noRd
 .is_url <- function(path) {
   if (is.null(path) || length(path) == 0 || nchar(path) == 0) {
     return(FALSE)
@@ -309,6 +464,7 @@ get_model_cache_dir <- function() {
 #' Get cache directory for models
 #' @param cache_dir Custom cache directory (if NULL, uses default)
 #' @return Path to the model cache directory
+#' @noRd
 .get_model_cache_dir <- function(cache_dir = NULL) {
   if (!is.null(cache_dir)) {
     if (!dir.exists(cache_dir)) {
@@ -341,6 +497,7 @@ get_model_cache_dir <- function() {
 #' @param model_url The model URL
 #' @param cache_dir Custom cache directory (optional)
 #' @return Local cache path for the model
+#' @noRd
 .get_cache_path <- function(model_url, cache_dir = NULL) {
   cache_dir <- .get_model_cache_dir(cache_dir)
   
@@ -366,6 +523,7 @@ get_model_cache_dir <- function() {
 #' @param model_url The model URL
 #' @param cache_path The local cache path
 #' @param show_progress Whether to show download progress
+#' @noRd
 .download_model_to_cache <- function(model_url, cache_path, show_progress = TRUE) {
   # Create output directory if it doesn't exist
   output_dir <- dirname(cache_path)
@@ -389,6 +547,7 @@ get_model_cache_dir <- function() {
 #' @param force_redownload Force re-download even if cached version exists
 #' @param verify_integrity Verify file integrity
 #' @return The resolved local file path
+#' @noRd
 .resolve_model_path <- function(model_path, cache_dir = NULL, show_progress = TRUE, 
                                 force_redownload = FALSE, verify_integrity = TRUE) {
   # If it's a local file that exists, verify and return
@@ -439,6 +598,7 @@ get_model_cache_dir <- function() {
 #' @param file_path Path to the file to verify
 #' @param expected_size Expected file size in bytes (optional)
 #' @return TRUE if file is valid, FALSE otherwise
+#' @noRd
 .verify_file_integrity <- function(file_path, expected_size = NULL) {
   if (!file.exists(file_path)) {
     return(FALSE)
@@ -467,6 +627,7 @@ get_model_cache_dir <- function() {
 #' Check if file is a valid GGUF file
 #' @param file_path Path to the file to check
 #' @return TRUE if valid GGUF file, FALSE otherwise
+#' @noRd
 .is_valid_gguf_file <- function(file_path) {
   tryCatch({
     con <- file(file_path, "rb")
@@ -486,6 +647,7 @@ get_model_cache_dir <- function() {
 
 #' Check memory requirements for model loading
 #' @param model_path Path to the model file
+#' @noRd
 .check_model_memory_requirements <- function(model_path) {
   .ensure_backend_loaded()
   
@@ -520,6 +682,7 @@ get_model_cache_dir <- function() {
 #' @param output_path Local path to save to
 #' @param show_progress Whether to show progress
 #' @param max_retries Maximum number of retries
+#' @noRd
 .download_with_retry <- function(model_url, output_path, show_progress = TRUE, max_retries = 3) {
   .ensure_backend_loaded()
   

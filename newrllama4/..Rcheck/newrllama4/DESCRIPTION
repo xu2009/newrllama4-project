@@ -1,7 +1,8 @@
 Package: newrllama4
 Type: Package
-Title: R Interface to Llama.cpp with Runtime Library Loading and Model Download
-Version: 1.0.63
+Title: R Interface to Llama.cpp with Runtime Library Loading and Model
+        Download
+Version: 1.0.57
 Date: 2025-07-18
 Authors@R: person("yaoshengleo", role = c("aut", "cre"), email = "yaoshengleo@example.com")
 Author: yaoshengleo [aut, cre]
@@ -14,15 +15,11 @@ Description: Provides R bindings to the llama.cpp library for running large lang
     and automatic model downloading from URLs (<https://>, <hf://>, <ollama://>, etc.) with
     smart caching and progress tracking.
 License: MIT + file LICENSE
-Imports: 
-    Rcpp (>= 1.0.14),
-    tools,
-    utils
-Suggests:
-    testthat (>= 3.0.0),
-    covr
+Imports: Rcpp (>= 1.0.14), tools, utils
+Suggests: testthat (>= 3.0.0), covr
 URL: https://github.com/xu2009/newrllama4-project
 BugReports: https://github.com/xu2009/newrllama4-project/issues
 SystemRequirements: C++17, libcurl (optional, for model downloading)
 Encoding: UTF-8
 RoxygenNote: 7.3.2
+Built: R 4.4.1; aarch64-apple-darwin20; 2025-07-30 03:12:03 UTC; unix

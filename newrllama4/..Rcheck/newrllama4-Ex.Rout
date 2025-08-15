@@ -1,0 +1,355 @@
+
+R version 4.4.1 (2024-06-14) -- "Race for Your Life"
+Copyright (C) 2024 The R Foundation for Statistical Computing
+Platform: aarch64-apple-darwin20
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> pkgname <- "newrllama4"
+> source(file.path(R.home("share"), "R", "examples-header.R"))
+> options(warn = 1)
+> library('newrllama4')
+> 
+> base::assign(".oldSearch", base::search(), pos = 'CheckExEnv')
+> base::assign(".old_wd", base::getwd(), pos = 'CheckExEnv')
+> cleanEx()
+> nameEx("apply_chat_template")
+> ### * apply_chat_template
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: apply_chat_template
+> ### Title: Apply Chat Template to Format Conversations
+> ### Aliases: apply_chat_template
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D # Load a chat model
+> ##D model <- model_load("path/to/chat_model.gguf")
+> ##D 
+> ##D # Format a conversation
+> ##D messages <- list(
+> ##D   list(role = "system", content = "You are a helpful assistant."),
+> ##D   list(role = "user", content = "What is machine learning?"),
+> ##D   list(role = "assistant", content = "Machine learning is..."),
+> ##D   list(role = "user", content = "Give me an example.")
+> ##D )
+> ##D 
+> ##D # Apply chat template
+> ##D formatted_prompt <- apply_chat_template(model, messages)
+> ##D 
+> ##D # Generate response
+> ##D response <- quick_llama(formatted_prompt)
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("context_create")
+> ### * context_create
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: context_create
+> ### Title: Create Inference Context for Text Generation
+> ### Aliases: context_create
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D # Load model and create basic context
+> ##D model <- model_load("path/to/model.gguf")
+> ##D ctx <- context_create(model)
+> ##D 
+> ##D # Create context with larger buffer for long conversations
+> ##D long_ctx <- context_create(model, n_ctx = 4096)
+> ##D 
+> ##D # High-performance context with more threads
+> ##D fast_ctx <- context_create(model, n_ctx = 2048, n_threads = 8)
+> ##D 
+> ##D # Context for batch processing multiple conversations
+> ##D batch_ctx <- context_create(model, n_ctx = 2048, n_seq_max = 4)
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("detokenize")
+> ### * detokenize
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: detokenize
+> ### Title: Convert Token IDs Back to Text
+> ### Aliases: detokenize
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D # Load model
+> ##D model <- model_load("path/to/model.gguf")
+> ##D 
+> ##D # Tokenize then detokenize (round-trip)
+> ##D original_text <- "Hello, how are you today?"
+> ##D tokens <- tokenize(model, original_text)
+> ##D recovered_text <- detokenize(model, tokens)
+> ##D print(recovered_text)  # Should match original_text
+> ##D 
+> ##D # Detokenize generated tokens
+> ##D ctx <- context_create(model)
+> ##D input_tokens <- tokenize(model, "The weather is")
+> ##D output_tokens <- generate(ctx, input_tokens, max_tokens = 10)
+> ##D generated_text <- detokenize(model, output_tokens)
+> ##D 
+> ##D # Inspect individual tokens
+> ##D single_token <- c(123)  # Some token ID
+> ##D token_text <- detokenize(model, single_token)
+> ##D print(paste("Token", single_token, "represents:", token_text))
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("download_model")
+> ### * download_model
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: download_model
+> ### Title: Download a model manually
+> ### Aliases: download_model
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D # Download to specific location
+> ##D download_model("https://example.com/model.gguf", "~/models/my_model.gguf")
+> ##D 
+> ##D # Download to cache (path will be returned)
+> ##D cached_path <- download_model("https://example.com/model.gguf")
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("generate")
+> ### * generate
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: generate
+> ### Title: Generate Text Using Language Model Context
+> ### Aliases: generate
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D # Load model and create context
+> ##D model <- model_load("path/to/model.gguf")
+> ##D ctx <- context_create(model, n_ctx = 2048)
+> ##D 
+> ##D # Tokenize input text
+> ##D tokens <- tokenize(model, "Hello, how are you?")
+> ##D 
+> ##D # Generate response
+> ##D response <- generate(ctx, tokens, max_tokens = 50, temperature = 0.7)
+> ##D 
+> ##D # Creative writing with higher temperature
+> ##D creative_tokens <- tokenize(model, "Once upon a time")
+> ##D story <- generate(ctx, creative_tokens, max_tokens = 200, temperature = 1.2)
+> ##D 
+> ##D # Deterministic generation with seed
+> ##D predictable <- generate(ctx, tokens, max_tokens = 30, temperature = 0.5, seed = 42)
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("get_lib_path")
+> ### * get_lib_path
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: get_lib_path
+> ### Title: Get Backend Library Path
+> ### Aliases: get_lib_path
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D # Get the library path (only if installed)
+> ##D if (lib_is_installed()) {
+> ##D   lib_path <- get_lib_path()
+> ##D   message("Library is at: ", lib_path)
+> ##D }
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("install_newrllama")
+> ### * install_newrllama
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: install_newrllama
+> ### Title: Install newrllama Backend Library
+> ### Aliases: install_newrllama
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D # Install the backend library
+> ##D install_newrllama()
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("lib_is_installed")
+> ### * lib_is_installed
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: lib_is_installed
+> ### Title: Check if Backend Library is Installed
+> ### Aliases: lib_is_installed
+> 
+> ### ** Examples
+> 
+> # Check if backend library is installed
+> if (lib_is_installed()) {
++   message("Backend library is ready")
++ } else {
++   message("Please run install_newrllama() first")
++ }
+Please run install_newrllama() first
+> 
+> 
+> 
+> cleanEx()
+> nameEx("model_load")
+> ### * model_load
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: model_load
+> ### Title: Load Language Model with Automatic Download Support
+> ### Aliases: model_load
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D # Load local GGUF model
+> ##D model <- model_load("/path/to/my_model.gguf")
+> ##D 
+> ##D # Download from Hugging Face and cache locally
+> ##D model <- model_load("hf://microsoft/DialoGPT-medium/model.gguf")
+> ##D 
+> ##D # Load with GPU acceleration (offload 10 layers)
+> ##D model <- model_load("/path/to/model.gguf", n_gpu_layers = 10)
+> ##D 
+> ##D # Download to custom cache directory
+> ##D model <- model_load("https://example.com/model.gguf", 
+> ##D                     cache_dir = "~/my_models")
+> ##D 
+> ##D # Force fresh download (ignore cache)
+> ##D model <- model_load("https://example.com/model.gguf", 
+> ##D                     force_redownload = TRUE)
+> ##D 
+> ##D # High-performance settings for large models
+> ##D model <- model_load("/path/to/large_model.gguf", 
+> ##D                     n_gpu_layers = -1,     # All layers on GPU
+> ##D                     use_mlock = TRUE)      # Lock in memory
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("quick_llama")
+> ### * quick_llama
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: quick_llama
+> ### Title: Quick LLaMA Inference
+> ### Aliases: quick_llama
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D # Simple usage
+> ##D response <- quick_llama("Hello, how are you?")
+> ##D 
+> ##D # Multiple prompts
+> ##D responses <- quick_llama(c("Summarize AI", "Explain quantum computing"))
+> ##D 
+> ##D # Custom parameters
+> ##D creative_response <- quick_llama("Tell me a story", 
+> ##D                                  temperature = 0.9, 
+> ##D                                  max_tokens = 200)
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("tokenize")
+> ### * tokenize
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: tokenize
+> ### Title: Convert Text to Token IDs
+> ### Aliases: tokenize
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D # Load model
+> ##D model <- model_load("path/to/model.gguf")
+> ##D 
+> ##D # Basic tokenization
+> ##D tokens <- tokenize(model, "Hello, world!")
+> ##D print(tokens)  # e.g., c(15339, 11, 1917, 0)
+> ##D 
+> ##D # Tokenize without special tokens (for model inputs)
+> ##D raw_tokens <- tokenize(model, "Continue this text", add_special = FALSE)
+> ##D 
+> ##D # Tokenize multiple texts
+> ##D batch_tokens <- tokenize(model, c("First text", "Second text"))
+> ##D 
+> ##D # Check tokenization of specific phrases
+> ##D question_tokens <- tokenize(model, "What is AI?")
+> ##D print(length(question_tokens))  # Number of tokens
+> ## End(Not run)
+> 
+> 
+> 
+> ### * <FOOTER>
+> ###
+> cleanEx()
+> options(digits = 7L)
+> base::cat("Time elapsed: ", proc.time() - base::get("ptime", pos = 'CheckExEnv'),"\n")
+Time elapsed:  0.062 0.005 0.068 0 0 
+> grDevices::dev.off()
+null device 
+          1 
+> ###
+> ### Local variables: ***
+> ### mode: outline-minor ***
+> ### outline-regexp: "\\(> \\)?### [*]+" ***
+> ### End: ***
+> quit('no')

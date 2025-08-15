@@ -232,14 +232,19 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate(newrllama_context_handle c
         set_error(error_message, "Failed to decode input tokens."); 
         return NEWRLLAMA_ERROR; 
     } 
+    
+    // 🔧 修复：使用与官方examples一致的采样器链配置
     struct llama_sampler_chain_params sparams_chain = llama_sampler_chain_default_params(); 
     struct llama_sampler* sampler_chain = llama_sampler_chain_init(sparams_chain); 
-    llama_sampler_chain_add(sampler_chain, llama_sampler_init_penalties(repeat_last_n, penalty_repeat, 0.0f, 0.0f)); 
+    
+    // 按照官方batched.cpp的标准顺序和参数配置采样器
+    // 注意：移除了penalties采样器，因为官方标准不包含此采样器
     llama_sampler_chain_add(sampler_chain, llama_sampler_init_top_k(top_k)); 
-    llama_sampler_chain_add(sampler_chain, llama_sampler_init_top_p(top_p, 1)); 
+    llama_sampler_chain_add(sampler_chain, llama_sampler_init_top_p(top_p, 1)); // min_keep=1是标准值
     llama_sampler_chain_add(sampler_chain, llama_sampler_init_temp(temperature)); 
     uint32_t final_seed = (seed < 0) ? time(NULL) : seed; 
     llama_sampler_chain_add(sampler_chain, llama_sampler_init_dist(final_seed)); 
+    
     std::string generated_text; 
     for (int i = 0; i < max_tokens; ++i) { 
         llama_token new_token = llama_sampler_sample(sampler_chain, ctx, -1); 
@@ -817,6 +822,15 @@ static int download_file(const std::string& url, const std::string& output_file,
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
     
+    // Check for HuggingFace token and add authorization header if needed
+    struct curl_slist* headers = nullptr;
+    const char* hf_token = std::getenv("HF_TOKEN");
+    if (hf_token && strlen(hf_token) > 0 && url.find("huggingface.co") != std::string::npos) {
+        std::string auth_header = "Authorization: Bearer " + std::string(hf_token);
+        headers = curl_slist_append(headers, auth_header.c_str());
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    }
+    
     if (show_progress) {
         curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
         curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &data);
@@ -825,6 +839,11 @@ static int download_file(const std::string& url, const std::string& output_file,
     
     CURLcode res = curl_easy_perform(curl);
     fclose(fp);
+    
+    // Clean up headers
+    if (headers) {
+        curl_slist_free_all(headers);
+    }
     
     if (res != CURLE_OK) {
         curl_easy_cleanup(curl);

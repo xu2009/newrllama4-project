@@ -2,22 +2,47 @@
 % Please edit documentation in R/api.R
 \name{apply_chat_template}
 \alias{apply_chat_template}
-\title{Apply chat template}
+\title{Apply Chat Template to Format Conversations}
 \usage{
 apply_chat_template(model, messages, template = NULL, add_assistant = TRUE)
 }
 \arguments{
-\item{model}{A model object}
+\item{model}{A model object created with \code{\link{model_load}}}
 
-\item{messages}{List of chat messages, each with 'role' and 'content'}
+\item{messages}{List of chat messages, each with 'role' and 'content' fields. 
+Role should be 'user', 'assistant', or 'system'}
 
-\item{template}{Optional custom template (default: NULL, use model's template)}
+\item{template}{Optional custom template string (default: NULL, uses model's built-in template)}
 
-\item{add_assistant}{Whether to add assistant prompt (default: TRUE)}
+\item{add_assistant}{Whether to add assistant prompt suffix for response generation (default: TRUE)}
 }
 \value{
-Formatted prompt string
+Formatted prompt string ready for text generation
 }
 \description{
-Apply chat template
+Formats conversation messages using the model's built-in chat template or a custom template.
+This is essential for chat models that expect specific formatting for multi-turn conversations.
+}
+\examples{
+\dontrun{
+# Load a chat model
+model <- model_load("path/to/chat_model.gguf")
+
+# Format a conversation
+messages <- list(
+  list(role = "system", content = "You are a helpful assistant."),
+  list(role = "user", content = "What is machine learning?"),
+  list(role = "assistant", content = "Machine learning is..."),
+  list(role = "user", content = "Give me an example.")
+)
+
+# Apply chat template
+formatted_prompt <- apply_chat_template(model, messages)
+
+# Generate response
+response <- quick_llama(formatted_prompt)
+}
+}
+\seealso{
+\code{\link{model_load}}, \code{\link{quick_llama}}, \code{\link{generate}}
 }

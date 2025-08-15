@@ -1,0 +1,20 @@
+apply_chat_template     Apply Chat Template to Format Conversations
+backend_free            Free newrllama backend
+backend_init            Initialize newrllama backend
+context_create          Create Inference Context for Text Generation
+detokenize              Convert Token IDs Back to Text
+download_model          Download a model manually
+generate                Generate Text Using Language Model Context
+generate_parallel       Generate text in parallel
+get_lib_path            Get Backend Library Path
+get_model_cache_dir     Get the model cache directory
+install_newrllama       Install newrllama Backend Library
+lib_is_installed        Check if Backend Library is Installed
+model_load              Load Language Model with Automatic Download
+                        Support
+newrllama4-package      R Interface to llama.cpp with Runtime Library
+                        Loading
+quick_llama             Quick LLaMA Inference
+quick_llama_reset       Reset quick_llama state
+tokenize                Convert Text to Token IDs
+tokenize_test           Test tokenize function (debugging)

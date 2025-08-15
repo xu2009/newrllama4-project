@@ -25,6 +25,7 @@
 #'
 #' @return Character string (single prompt) or named list (multiple prompts)
 #' @export
+#' @seealso \code{\link{model_load}}, \code{\link{generate}}, \code{\link{generate_parallel}}, \code{\link{install_newrllama}}
 #'
 #' @examples
 #' \dontrun{
@@ -119,12 +120,14 @@ quick_llama_reset <- function() {
 
 #' Get default model URL
 #' @return Default model URL
+#' @noRd
 .get_default_model <- function() {
   "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
 }
 
 #' Detect optimal GPU layers
 #' @return Integer number of GPU layers
+#' @noRd
 .detect_gpu_layers <- function() {
   # Try to detect GPU support
   # This is a simplified version - in real implementation, you might
@@ -151,6 +154,7 @@ quick_llama_reset <- function() {
 }
 
 #' Ensure backend is ready
+#' @noRd
 .ensure_quick_llama_ready <- function() {
   # Check if backend library is installed
   if (!lib_is_installed()) {
@@ -170,6 +174,7 @@ quick_llama_reset <- function() {
 #' @param n_gpu_layers Number of GPU layers
 #' @param n_ctx Context size
 #' @param n_threads Number of threads
+#' @noRd
 .ensure_model_loaded <- function(model_path, n_gpu_layers, n_ctx, n_threads) {
   # Check if we have a cached model and context for this configuration
   cache_key <- paste0(model_path, "_", n_gpu_layers, "_", n_ctx, "_", n_threads)
@@ -209,6 +214,7 @@ quick_llama_reset <- function() {
 #' @param stream Whether to stream
 #' @param ... Additional parameters
 #' @return Generated text string
+#' @noRd
 .generate_single <- function(prompt, max_tokens, top_k, top_p, temperature, 
                              repeat_penalty, seed, stream, ...) {
   
@@ -258,6 +264,7 @@ quick_llama_reset <- function() {
 #' @param stream Whether to stream
 #' @param ... Additional parameters
 #' @return Named list of generated texts
+#' @noRd
 .generate_multiple <- function(prompts, max_tokens, top_k, top_p, temperature, 
                                repeat_penalty, seed, stream, ...) {
   
@@ -302,6 +309,7 @@ quick_llama_reset <- function() {
 
 #' Check if backend is loaded
 #' @return TRUE if backend is loaded, FALSE otherwise
+#' @noRd
 .is_backend_loaded <- function() {
   # Simply check if the backend library is installed
   # The actual loading will be handled by ensure_backend_loaded

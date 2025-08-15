@@ -2,22 +2,48 @@
 % Please edit documentation in R/api.R
 \name{context_create}
 \alias{context_create}
-\title{Create inference context}
+\title{Create Inference Context for Text Generation}
 \usage{
 context_create(model, n_ctx = 2048L, n_threads = 4L, n_seq_max = 1L)
 }
 \arguments{
-\item{model}{A model object returned by model_load()}
+\item{model}{A model object returned by \code{\link{model_load}}}
 
-\item{n_ctx}{Context size (default: 2048)}
+\item{n_ctx}{Maximum context length in tokens (default: 2048). This determines how many
+tokens of conversation history can be maintained. Larger values require more memory
+but allow for longer conversations. Must not exceed the model's maximum context length}
 
-\item{n_threads}{Number of threads (default: 4)}
+\item{n_threads}{Number of CPU threads for inference (default: 4). Set to the number
+of available CPU cores for optimal performance. Only affects CPU computation}
 
-\item{n_seq_max}{Maximum number of sequences (default: 1)}
+\item{n_seq_max}{Maximum number of parallel sequences (default: 1). Used for batch
+processing multiple conversations simultaneously. Higher values require more memory}
 }
 \value{
-A context object (external pointer)
+A context object (external pointer) used for text generation with \code{\link{generate}}
 }
 \description{
-Create inference context
+Creates a context object that manages the computational state for text generation.
+The context maintains the conversation history and manages memory efficiently for
+processing input tokens and generating responses. Each model can have multiple
+contexts with different settings.
+}
+\examples{
+\dontrun{
+# Load model and create basic context
+model <- model_load("path/to/model.gguf")
+ctx <- context_create(model)
+
+# Create context with larger buffer for long conversations
+long_ctx <- context_create(model, n_ctx = 4096)
+
+# High-performance context with more threads
+fast_ctx <- context_create(model, n_ctx = 2048, n_threads = 8)
+
+# Context for batch processing multiple conversations
+batch_ctx <- context_create(model, n_ctx = 2048, n_seq_max = 4)
+}
+}
+\seealso{
+\code{\link{model_load}}, \code{\link{generate}}, \code{\link{tokenize}}
 }

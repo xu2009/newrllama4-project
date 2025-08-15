@@ -2,7 +2,7 @@
 % Please edit documentation in R/api.R
 \name{model_load}
 \alias{model_load}
-\title{Load a language model (with smart download)}
+\title{Load Language Model with Automatic Download Support}
 \usage{
 model_load(
   model_path,
@@ -17,42 +17,68 @@ model_load(
 )
 }
 \arguments{
-\item{model_path}{Path to the GGUF model file or a URL (supports hf://, ollama://, https://, etc.)}
+\item{model_path}{Path to local GGUF model file or URL. Supported URL formats:
+\itemize{
+  \item \code{https://} - Direct download from web servers
+  \item \code{hf://} - Hugging Face model repository (hf://username/model/file.gguf)
+  \item \code{ollama://} - Ollama model format (experimental)
+}}
 
-\item{cache_dir}{Custom cache directory for downloaded models (default: NULL, uses system cache)}
+\item{cache_dir}{Custom directory for downloaded models (default: NULL uses system cache directory)}
 
-\item{n_gpu_layers}{Number of layers to offload to GPU (default: 0)}
+\item{n_gpu_layers}{Number of transformer layers to offload to GPU (default: 0 for CPU-only). 
+Set to -1 to offload all layers, or a positive integer for partial offloading}
 
-\item{use_mmap}{Whether to use memory mapping (default: TRUE)}
+\item{use_mmap}{Enable memory mapping for efficient model loading (default: TRUE). 
+Disable only if experiencing memory issues}
 
-\item{use_mlock}{Whether to use memory locking (default: FALSE)}
+\item{use_mlock}{Lock model in physical memory to prevent swapping (default: FALSE). 
+Enable for better performance but requires sufficient RAM}
 
-\item{show_progress}{Whether to show download progress for URLs (default: TRUE)}
+\item{show_progress}{Display download progress bar for remote models (default: TRUE)}
 
-\item{force_redownload}{Force re-download even if cached version exists (default: FALSE)}
+\item{force_redownload}{Force re-download even if cached version exists (default: FALSE). 
+Useful for updating to newer model versions}
 
-\item{verify_integrity}{Verify file integrity before loading (default: TRUE)}
+\item{verify_integrity}{Verify file integrity using checksums when available (default: TRUE)}
 
-\item{check_memory}{Check if sufficient memory is available before loading (default: TRUE)}
+\item{check_memory}{Check if sufficient system memory is available before loading (default: TRUE)}
 }
 \value{
-A model object (external pointer)
+A model object (external pointer) that can be used with \code{\link{context_create}}, 
+  \code{\link{tokenize}}, and other model functions
 }
 \description{
-Load a language model (with smart download)
+Loads a GGUF format language model from local path or URL with intelligent caching
+and download management. Supports various model sources including Hugging Face, 
+Ollama repositories, and direct HTTPS URLs. Models are automatically cached to 
+avoid repeated downloads.
 }
 \examples{
 \dontrun{
-# Load local model
-model <- model_load("/path/to/model.gguf")
+# Load local GGUF model
+model <- model_load("/path/to/my_model.gguf")
 
-# Auto-download from URL
-model <- model_load("https://example.com/model.gguf")
+# Download from Hugging Face and cache locally
+model <- model_load("hf://microsoft/DialoGPT-medium/model.gguf")
+
+# Load with GPU acceleration (offload 10 layers)
+model <- model_load("/path/to/model.gguf", n_gpu_layers = 10)
 
 # Download to custom cache directory
-model <- model_load("https://example.com/model.gguf", cache_dir = "~/my_models")
+model <- model_load("https://example.com/model.gguf", 
+                    cache_dir = "~/my_models")
 
-# Force re-download
-model <- model_load("https://example.com/model.gguf", force_redownload = TRUE)
+# Force fresh download (ignore cache)
+model <- model_load("https://example.com/model.gguf", 
+                    force_redownload = TRUE)
+
+# High-performance settings for large models
+model <- model_load("/path/to/large_model.gguf", 
+                    n_gpu_layers = -1,     # All layers on GPU
+                    use_mlock = TRUE)      # Lock in memory
 }
+}
+\seealso{
+\code{\link{context_create}}, \code{\link{download_model}}, \code{\link{get_model_cache_dir}}
 }

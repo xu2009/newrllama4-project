@@ -4,16 +4,9 @@
 [![codecov](https://codecov.io/gh/xu2009/newrllama4-project/branch/main/graph/badge.svg)](https://codecov.io/gh/xu2009/newrllama4-project)
 [![CRAN status](https://www.r-pkg.org/badges/version/newrllama4)](https://CRAN.R-project.org/package=newrllama4)
 
-**R Interface to Local Large Language Models with Privacy Protection**
+**R Interface to Large Language Models with Runtime Library Loading**
 
-`newrllama4` is an R package that provides access to open-source large language models (LLMs) through the high-performance [llama.cpp](https://github.com/ggerganov/llama.cpp) backend. Built on the industry-leading C++ inference engine, this package enables researchers and data analysts to run powerful language models entirely on their local machines, ensuring complete data privacy and eliminating the need for external API services.
-
-**Key Features:**
-- **Local Execution**: All model inference runs locally on your computer, keeping your data private
-- **Open Source Models**: Use any GGUF format model from Hugging Face, including Llama, Mistral, and specialized research models
-- **High Performance**: Built on llama.cpp, the fastest open-source LLM inference engine
-- **Zero External Dependencies**: No API keys, internet calls, or cloud services required for inference
-- **Research-Friendly**: Designed specifically for academic and research workflows
+`newrllama4` is an R package that provides access to large language models (LLMs) through the high-performance llama.cpp backend. The package is designed for researchers and data analysts who want to integrate language model capabilities into their R workflows without complex setup requirements.
 
 ---
 
@@ -22,14 +15,14 @@
 Get started with large language models in R in three steps:
 
 ```r
-# Step 1: Install the R package from CRAN
-install.packages("newrllama4")
+# Step 1: Install the R package
+devtools::install_github("xu2009/newrllama4-project", subdir = "newrllama4")
 
 # Step 2: Download the backend library (first-time setup)
 library(newrllama4)
 install_newrllama()
 
-# Step 3: Generate text using a GGUF format language model
+# Step 3: Generate text using a language model
 response <- quick_llama("Explain the concept of statistical significance")
 print(response)
 ```
@@ -38,13 +31,11 @@ print(response)
 
 ## Introduction to Large Language Models
 
-Large Language Models (LLMs) are neural networks trained on vast amounts of text data that can understand and generate human language. This package enables you to run these models locally for complete privacy. Key concepts:
+Large Language Models (LLMs) are neural networks trained on vast amounts of text data that can understand and generate human language. Key concepts:
 
-- **Large Language Models**: AI systems that process and generate text based on patterns learned from training data, running entirely on your local machine
-- **llama.cpp**: The high-performance C++ inference engine that powers this package, providing optimal speed for local model execution
-- **GGUF Format**: An efficient binary format for storing and loading language models, optimized for local inference without cloud dependencies
-- **Open Source Models**: Use models from Hugging Face and other repositories, including Llama, Mistral, CodeLlama, and specialized research models
-- **Local Privacy**: All computation happens on your machine - no data is sent to external servers or APIs
+- **Large Language Models**: AI systems that process and generate text based on patterns learned from training data
+- **GGUF Format**: An efficient binary format for storing and loading language models, optimized for inference
+- **Text Generation**: The process of producing coherent text responses based on input prompts
 
 ### Research Applications
 
@@ -78,12 +69,12 @@ Large Language Models (LLMs) are neural networks trained on vast amounts of text
 #### Step 1: Install R Package
 
 ```r
-# Method 1: Install from CRAN (recommended)
-install.packages("newrllama4")
-
-# Method 2: Development version from GitHub
+# Method 1: Install from GitHub (recommended)
 if (!require(devtools)) install.packages("devtools")
 devtools::install_github("xu2009/newrllama4-project", subdir = "newrllama4")
+
+# Method 2: From CRAN (when available)
+# install.packages("newrllama4")
 ```
 
 #### Step 2: Download Backend Library
@@ -165,7 +156,7 @@ results <- quick_llama(prompts, max_tokens = 100)
 When you need more control over the generation process:
 
 ```r
-# Load a specific GGUF format model (will download if needed)
+# Load a specific model (will download if needed)
 model <- model_load("https://huggingface.co/microsoft/DialoGPT-medium/model.gguf")
 
 # Create inference context with custom settings
@@ -184,7 +175,7 @@ text <- detokenize(model, result)
 #### Multi-turn Conversations
 
 ```r
-# Load a chat-optimized GGUF model
+# Load a chat-optimized model
 model <- model_load("path/to/chat_model.gguf")
 
 # Build conversation history
@@ -203,7 +194,7 @@ response <- quick_llama(formatted_prompt)
 #### GPU Acceleration Setup
 
 ```r
-# Enable GPU acceleration (if available) for GGUF models
+# Enable GPU acceleration (if available)
 gpu_model <- model_load("model.gguf", 
                         n_gpu_layers = -1,  # Use all GPU layers
                         use_mlock = TRUE)   # Lock model in memory
@@ -301,7 +292,7 @@ explanation <- explain_concept("p-value", "beginner")
 ### Speed Optimization
 
 ```r
-# Optimized configuration example for GGUF models
+# Optimized configuration example
 optimized_model <- model_load(
   model_path = "model.gguf",
   n_gpu_layers = -1,        # Full GPU acceleration
@@ -326,13 +317,13 @@ optimized_ctx <- context_create(
 | **Full GPU** | High | Highest | High-performance requirements |
 
 ```r
-# Memory-efficient configuration for GGUF models
+# Memory-efficient configuration
 memory_efficient <- model_load("model.gguf", 
                                n_gpu_layers = 0,     # CPU only
                                use_mmap = TRUE,      # Reduce memory usage
                                use_mlock = FALSE)
 
-# High-performance configuration for GGUF models (requires sufficient memory)
+# High-performance configuration (requires sufficient memory)
 high_performance <- model_load("model.gguf",
                                n_gpu_layers = -1,    # Full GPU
                                use_mlock = TRUE)     # Maximum speed
@@ -382,7 +373,7 @@ get_lib_path()
 
 **Solution**:
 ```r
-# Force re-download of GGUF model
+# Force re-download of model
 model <- model_load("model_url", force_redownload = TRUE)
 
 # Check disk space
@@ -399,22 +390,22 @@ file.info(get_model_cache_dir())
 ctx <- context_create(model, n_ctx = 1024)  # Reduce to 1024
 
 # Close other programs to free memory
-# Or use memory-friendly configuration for GGUF models
+# Or use memory-friendly configuration
 model <- model_load("model.gguf", n_gpu_layers = 0)
 ```
 
-### Debugging Tips
+### 🐛 调试技巧
 
 ```r
-# Enable verbose logging
+# 启用详细日志
 options(newrllama.verbose = TRUE)
 
-# Check system information
+# 检查系统信息
 Sys.info()
 
-# Check memory usage
+# 检查内存使用
 memory.size()  # Windows
-object.size(model)  # Check model size
+object.size(model)  # 检查模型大小
 ```
 
 ### Getting Help
@@ -425,90 +416,83 @@ object.size(model)  # Check model size
 
 ---
 
-## Recommended Models
+## 📊 推荐模型指南
 
-### Model Selection by Use Case
+### 💻 按用途选择模型
 
-| Use Case | Recommended Model | Size | Features |
-|----------|-------------------|------|----------|
-| **Quick Testing** | Llama-3.2-1B-Instruct | ~1GB | Fast, basic functionality |
-| **General Conversation** | Llama-3.2-3B-Instruct | ~2GB | Balanced performance |
-| **Professional Tasks** | Llama-3.1-8B-Instruct | ~5GB | High-quality responses |
-| **Code Generation** | CodeLlama-7B-Instruct | ~4GB | Programming-focused |
+| 用途 | 推荐模型 | 大小 | 特点 |
+|------|----------|------|------|
+| **快速测试** | Llama-3.2-1B-Instruct | ~1GB | 速度快，基础功能 |
+| **日常对话** | Llama-3.2-3B-Instruct | ~2GB | 平衡性能 |
+| **专业任务** | Llama-3.1-8B-Instruct | ~5GB | 高质量回答 |
+| **代码生成** | CodeLlama-7B-Instruct | ~4GB | 编程专用 |
 
-### Performance vs Quality Trade-offs
+### 📈 性能vs质量权衡
 
 ```r
-# Quick prototyping - prioritize speed with smaller GGUF models
+# 快速原型 - 优先速度
 quick_model <- model_load("https://huggingface.co/.../Llama-3.2-1B-Instruct-Q4_K_M.gguf")
 
-# Production environment - prioritize quality with larger GGUF models
+# 生产环境 - 优先质量
 production_model <- model_load("https://huggingface.co/.../Llama-3.1-8B-Instruct-Q4_K_M.gguf")
 
-# Offline usage - local GGUF files for complete privacy
+# 离线使用 - 本地文件
 local_model <- model_load("/path/to/your/model.gguf")
 ```
 
-### Multilingual Support
+### 🌍 多语言支持
 
 ```r
-# English language examples
-english_response <- quick_llama("What is machine learning?")
+# 中文优化模型
+chinese_model <- quick_llama("请用中文回答：什么是机器学习？")
 
-# Processing multiple languages
+# 多语言处理
 multilingual <- quick_llama(c(
   "Explain AI in English",
-  "Expliquer l'IA en français", 
-  "Explicar la IA en español"
+  "Explique l'IA en français", 
+  "用中文解释人工智能"
 ))
 ```
 
 ---
 
-## Architecture Design
+## 🏗️ 架构设计
 
-newrllama4 uses an innovative four-layer architecture built on llama.cpp that balances ease of use with performance:
+newrllama4 采用创新的四层架构，平衡了易用性和性能：
 
 ```
 ┌─────────────────────────────────────┐
-│    High-level R Interface           │  ← Direct user interaction
-│         (quick_llama)               │
+│        高级R接口 (quick_llama)       │  ← 用户直接使用
 ├─────────────────────────────────────┤
-│   Intermediate API                  │  ← Advanced users
-│  (model_load, generate)             │
+│     中级API (model_load, generate)  │  ← 高级用户
 ├─────────────────────────────────────┤
-│    R/C++ Bridge Layer               │  ← Data conversion
-│      (Rcpp Interface)               │
+│      R/C++桥接层 (Rcpp接口)        │  ← 数据转换
 ├─────────────────────────────────────┤
-│     llama.cpp Backend               │  ← Core computation engine
-│    (C++ Inference Engine)           │    (Local, Private)
+│        C++后端 (llama.cpp)          │  ← 核心计算引擎
 └─────────────────────────────────────┘
 ```
 
-### Design Rationale
+### 为什么这样设计？
 
-- **Local Privacy**: All computation runs locally using llama.cpp - no data leaves your machine
-- **Ease of Use**: `quick_llama()` enables single-line usage with GGUF models
-- **Performance**: llama.cpp C++ backend ensures maximum efficiency for local inference
-- **Lightweight**: Runtime downloads avoid large package sizes
-- **Open Source**: Works with any GGUF format model from Hugging Face and other sources
+- **🎯 易用性**: `quick_llama()` 一行代码即可使用
+- **⚡ 性能**: 底层C++引擎确保最高效率  
+- **📦 轻量级**: 运行时下载避免大包体积
+- **🔧 灵活性**: 支持从简单到复杂的各种用法
 
 ---
 
-## Advanced Topics
+## 🔬 高级主题
 
-### Custom Model Usage
+### 自定义模型训练
 
-While this package is primarily for inference, you can use any trained GGUF format model from various sources:
+虽然本包主要用于推理，但您可以使用训练好的GGUF模型：
 
 ```r
-# Load your own fine-tuned GGUF model
+# 加载您自己训练的模型
 custom_model <- model_load("/path/to/your/fine-tuned-model.gguf")
 
-# Load GGUF models from Hugging Face
+# 或从Hugging Face加载
 hf_model <- model_load("hf://your-username/your-model/model.gguf")
-
-# All models must be in GGUF format for compatibility with llama.cpp backend
 ```
 
 ### Batch Processing Best Practices
@@ -531,111 +515,108 @@ process_batch <- function(prompts, batch_size = 10) {
 }
 ```
 
-### Integration with Other R Packages
+### 与其他R包集成
 
 ```r
-# Integration with ggplot2 - AI-assisted visualization
+# 与ggplot2结合 - AI辅助可视化
 library(ggplot2)
 
 plot_suggestion <- quick_llama(
-  "Based on the iris dataset, suggest a meaningful visualization approach and return ggplot2 code"
+  "基于iris数据集，建议一个有意义的可视化方案，返回ggplot2代码"
 )
 
-# Integration with dplyr - data processing recommendations
+# 与dplyr结合 - 数据处理建议
 library(dplyr)
 
 data_analysis <- quick_llama(
-  "Provide dplyr pipeline steps for sales data analysis"
+  "为销售数据分析提供dplyr管道操作步骤"
 )
 ```
 
 ---
 
-## Community and Contributing
+## 🤝 社区与贡献
 
-### How to Contribute
+### 参与贡献
 
-We welcome all forms of contribution!
+我们欢迎所有形式的贡献！
 
-- **Bug Reports**: [Submit Issue](https://github.com/xu2009/newrllama4-project/issues/new?template=bug_report.md)
-- **Feature Requests**: [Request Feature](https://github.com/xu2009/newrllama4-project/issues/new?template=feature_request.md)
-- **Documentation**: Submit PR to improve README and documentation
-- **Code Contributions**: Fork the project and submit Pull Requests
+- 🐛 **报告Bug**: [提交Issue](https://github.com/xu2009/newrllama4-project/issues/new?template=bug_report.md)
+- 💡 **功能建议**: [功能请求](https://github.com/xu2009/newrllama4-project/issues/new?template=feature_request.md)
+- 📖 **改进文档**: 提交PR改进README和文档
+- 💻 **代码贡献**: Fork项目并提交Pull Request
 
-### Development Environment Setup
+### 开发环境设置
 
 ```r
-# Install development version from GitHub
+# 开发版本安装
 devtools::install_github("xu2009/newrllama4-project", 
                          subdir = "newrllama4", 
                          ref = "develop")
 
-# Or install stable version from CRAN
-install.packages("newrllama4")
-
-# Run tests
+# 运行测试
 devtools::test()
 
-# Build documentation
+# 构建文档
 devtools::document()
 ```
 
-### Code of Conduct
+### 行为准则
 
-We are committed to creating a friendly and inclusive open-source community. Please read our [Code of Conduct](https://github.com/xu2009/newrllama4-project/blob/main/CODE_OF_CONDUCT.md).
-
----
-
-## Related Resources
-
-### Learning Resources
-
-- **R Programming**: [R for Data Science](https://r4ds.had.co.nz/)
-- **AI Fundamentals**: [Elements of AI](https://www.elementsofai.com/)
-- **Deep Learning**: [Deep Learning with R](https://www.manning.com/books/deep-learning-with-r)
-
-### Related Projects
-
-- **llama.cpp**: [Original C++ project](https://github.com/ggerganov/llama.cpp)
-- **Hugging Face**: [Model repository](https://huggingface.co/models)
-- **R Project**: [Official website](https://www.r-project.org/)
-
-### Technical Documentation
-
-- [Best Practices for Using LLMs in R](https://github.com/xu2009/newrllama4-project/wiki)
-- [Performance Tuning Guide](https://github.com/xu2009/newrllama4-project/wiki/Performance-Tuning)
+我们致力于创建一个友好、包容的开源社区。请阅读我们的[行为准则](https://github.com/xu2009/newrllama4-project/blob/main/CODE_OF_CONDUCT.md)。
 
 ---
 
-## License
+## 📚 相关资源
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+### 学习资源
+
+- 📖 **R语言**: [R for Data Science](https://r4ds.had.co.nz/)
+- 🤖 **AI基础**: [Elements of AI](https://www.elementsofai.com/)
+- 🧠 **深度学习**: [Deep Learning with R](https://www.manning.com/books/deep-learning-with-r)
+
+### 相关项目
+
+- 🦙 **llama.cpp**: [原始C++项目](https://github.com/ggerganov/llama.cpp)
+- 🤗 **Hugging Face**: [模型库](https://huggingface.co/models)
+- 📊 **R语言**: [官方网站](https://www.r-project.org/)
+
+### 技术博客
+
+- [在R中使用大语言模型的最佳实践](https://github.com/xu2009/newrllama4-project/wiki)
+- [性能调优指南](https://github.com/xu2009/newrllama4-project/wiki/Performance-Tuning)
 
 ---
 
-## Support the Project
+## 📄 许可证
 
-If you find this project helpful, please consider:
-
-- ⭐ Starring the repository
-- 🐛 Reporting issues and suggestions
-- 📢 Recommending to colleagues and friends
-- 💝 [Becoming a sponsor](https://github.com/sponsors/xu2009)
+本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
 
 ---
 
-## Contact
+## ⭐ 支持项目
 
-- **Email**: yaoshengleo@example.com
-- **GitHub**: [@xu2009](https://github.com/xu2009)
-- **Issues**: [GitHub Issues](https://github.com/xu2009/newrllama4-project/issues)
+如果这个项目对您有帮助，请考虑：
+
+- ⭐ 给项目加星标
+- 🐛 报告问题和建议
+- 📢 推荐给朋友和同事
+- 💝 [成为赞助者](https://github.com/sponsors/xu2009)
+
+---
+
+## 📞 联系我们
+
+- 📧 **邮箱**: yaoshengleo@example.com
+- 🐙 **GitHub**: [@xu2009](https://github.com/xu2009)
+- 🐦 **问题反馈**: [GitHub Issues](https://github.com/xu2009/newrllama4-project/issues)
 
 ---
 
 <div align="center">
 
-**Making AI Simple and Powerful in R**
+**让AI在R中变得简单而强大** 🚀
 
-[Quick Start](#quick-start) • [Documentation](https://github.com/xu2009/newrllama4-project/wiki) • [Report Issues](https://github.com/xu2009/newrllama4-project/issues)
+[快速开始](#-quick-start---30秒上手) • [查看文档](https://github.com/xu2009/newrllama4-project/wiki) • [报告问题](https://github.com/xu2009/newrllama4-project/issues)
 
 </div>
