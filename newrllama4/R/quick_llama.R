@@ -79,7 +79,7 @@ quick_llama <- function(prompt,
                         system_prompt = "You are a helpful assistant.",
                         auto_format = TRUE,
                         chat_template = NULL,
-                        stream = NULL,
+                        stream = FALSE,
                         seed = 1234L,
                         ...) {
   
@@ -93,10 +93,8 @@ quick_llama <- function(prompt,
     stop("Prompt cannot be empty", call. = FALSE)
   }
   
-  # Auto-detect stream mode if not specified
-  if (is.null(stream)) {
-    stream <- interactive()
-  }
+  # Ensure stream is logical
+  stream <- as.logical(stream)
   
   # Auto-detect n_threads if not specified
   if (is.null(n_threads)) {
@@ -139,11 +137,17 @@ quick_llama <- function(prompt,
     formatted_prompt <- prompt
   }
   
+  # Debug: check EOS token (optional)
+  if (verbosity <= 1L) {
+    eos_token <- tokenize(.quick_llama_env$model, "", add_special = FALSE)
+    message("Model EOS token info available for debugging")
+  }
+  
   # Generate text
-  if (length(prompt) == 1) {
+  result <- if (length(prompt) == 1) {
     # Single prompt
     .generate_single(formatted_prompt, max_tokens, top_k, top_p, temperature, 
-                     repeat_last_n, penalty_repeat, seed, stream, min_p = min_p, ...)
+                     repeat_last_n, penalty_repeat, seed, stream)
   } else {
     # Multiple prompts - apply formatting to each prompt
     if (auto_format) {
@@ -163,8 +167,19 @@ quick_llama <- function(prompt,
       formatted_prompts <- prompt
     }
     .generate_multiple(formatted_prompts, max_tokens, top_k, top_p, temperature, 
-                       repeat_last_n, penalty_repeat, seed, stream, min_p = min_p, ...)
+                       repeat_last_n, penalty_repeat, seed, stream)
   }
+  
+  # Clean up special tokens from output
+  if (auto_format && is.character(result)) {
+    if (length(result) == 1) {
+      result <- .clean_output(result)
+    } else {
+      result <- lapply(result, .clean_output)
+    }
+  }
+  
+  result
 }
 
 #' Reset quick_llama state
@@ -182,6 +197,27 @@ quick_llama_reset <- function() {
 }
 
 # --- Helper Functions ---
+
+#' Clean output by removing special tokens
+#' @param text The generated text to clean
+#' @return Cleaned text
+#' @noRd
+.clean_output <- function(text) {
+  if (!is.character(text) || length(text) == 0) return(text)
+  
+  # Remove common chat template special tokens
+  text <- gsub("<\\|im_start\\|>.*$", "", text)
+  text <- gsub("<\\|im_end\\|>.*$", "", text)
+  text <- gsub("<\\|end\\|>.*$", "", text)
+  text <- gsub("<\\|assistant\\|>.*$", "", text)
+  text <- gsub("<\\|user\\|>.*$", "", text)
+  text <- gsub("<\\|system\\|>.*$", "", text)
+  
+  # Trim whitespace
+  text <- trimws(text)
+  
+  return(text)
+}
 
 #' Get default model URL
 #' @return Default model URL
@@ -282,7 +318,7 @@ quick_llama_reset <- function() {
 #' @return Generated text string
 #' @noRd
 .generate_single <- function(prompt, max_tokens, top_k, top_p, temperature, 
-                             repeat_penalty, seed, stream, ...) {
+                             repeat_last_n, penalty_repeat, seed, stream, ...) {
   
   context <- .quick_llama_env$context
   model <- .quick_llama_env$model
@@ -291,34 +327,17 @@ quick_llama_reset <- function() {
   tokens <- tokenize(model, prompt, add_special = TRUE)
   
   # Generate
-  if (stream) {
-    message("Generating (streaming)...")
-    # For streaming, we'll use the regular generate function
-    # In a full implementation, you might want to add actual streaming support
-    result <- generate(context, tokens, 
-                      max_tokens = max_tokens,
-                      top_k = top_k,
-                      top_p = top_p,
-                      temperature = temperature,
-                      repeat_last_n = repeat_last_n,
-                      penalty_repeat = penalty_repeat,
-                      seed = seed,
-                      ...)
-    cat(result, "\n")
-    return(result)
-  } else {
-    message("Generating...")
-    result <- generate(context, tokens, 
-                      max_tokens = max_tokens,
-                      top_k = top_k,
-                      top_p = top_p,
-                      temperature = temperature,
-                      repeat_last_n = repeat_last_n,
-                      penalty_repeat = penalty_repeat,
-                      seed = seed,
-                      ...)
-    return(result)
-  }
+  # Generate text (streaming flag is available for future use)
+  message("Generating...")
+  result <- generate(context, tokens, 
+                    max_tokens = max_tokens,
+                    top_k = top_k,
+                    top_p = top_p,
+                    temperature = temperature,
+                    repeat_last_n = repeat_last_n,
+                    penalty_repeat = penalty_repeat,
+                    seed = seed)
+  result
 }
 
 #' Generate text for multiple prompts
@@ -341,40 +360,19 @@ quick_llama_reset <- function() {
   
   message("Generating ", length(prompts), " responses...")
   
-  if (stream) {
-    # For streaming with multiple prompts, generate one by one
-    results <- vector("list", length(prompts))
-    names(results) <- paste0("prompt_", seq_along(prompts))
-    
-    for (i in seq_along(prompts)) {
-      cat("\n--- Prompt ", i, " ---\n")
-      cat("Input: ", prompts[i], "\n")
-      cat("Output: ")
-      
-      result <- .generate_single(prompts[i], max_tokens, top_k, top_p, 
-                                temperature, repeat_last_n, penalty_repeat, seed, 
-                                stream = FALSE, ...)
-      cat(result, "\n")
-      results[[i]] <- result
-    }
-    
-    return(results)
-  } else {
-    # Use parallel generation for better performance
-    results <- generate_parallel(context, prompts,
-                                max_tokens = max_tokens,
-                                top_k = top_k,
-                                top_p = top_p,
-                                temperature = temperature,
-                                repeat_last_n = repeat_last_n,
-                                penalty_repeat = penalty_repeat,
-                                seed = seed,
-                                ...)
-    
-    # Return as named list
-    names(results) <- paste0("prompt_", seq_along(prompts))
-    return(results)
-  }
+  # Use parallel generation for better performance (streaming flag available for future use)
+  results <- generate_parallel(context, prompts,
+                              max_tokens = max_tokens,
+                              top_k = top_k,
+                              top_p = top_p,
+                              temperature = temperature,
+                              repeat_last_n = repeat_last_n,
+                              penalty_repeat = penalty_repeat,
+                              seed = seed)
+  
+  # Return as named list
+  names(results) <- paste0("prompt_", seq_along(prompts))
+  results
 }
 
 #' Check if backend is loaded
