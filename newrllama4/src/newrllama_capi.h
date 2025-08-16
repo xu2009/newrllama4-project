@@ -28,9 +28,9 @@ struct newrllama_parallel_params { int max_tokens; int top_k; float top_p; float
 NEWRLLAMA_API newrllama_error_code newrllama_backend_init(const char** error_message);
 NEWRLLAMA_API void newrllama_backend_free();
 NEWRLLAMA_API newrllama_error_code newrllama_model_load(const char* model_path, int n_gpu_layers, bool use_mmap, bool use_mlock, newrllama_model_handle* model_handle_out, const char** error_message);
-NEWRLLAMA_API newrllama_error_code newrllama_model_load_safe(const char* model_path, int n_gpu_layers, bool use_mmap, bool use_mlock, bool check_memory, newrllama_model_handle* model_handle_out, const char** error_message);
+NEWRLLAMA_API newrllama_error_code newrllama_model_load_safe(const char* model_path, int n_gpu_layers, bool use_mmap, bool use_mlock, bool check_memory, int verbosity, newrllama_model_handle* model_handle_out, const char** error_message);
 NEWRLLAMA_API void newrllama_model_free(newrllama_model_handle model);
-NEWRLLAMA_API newrllama_error_code newrllama_context_create(newrllama_model_handle model, int n_ctx, int n_threads, int n_seq_max, newrllama_context_handle* context_handle_out, const char** error_message);
+NEWRLLAMA_API newrllama_error_code newrllama_context_create(newrllama_model_handle model, int n_ctx, int n_threads, int n_seq_max, int verbosity, newrllama_context_handle* context_handle_out, const char** error_message);
 NEWRLLAMA_API void newrllama_context_free(newrllama_context_handle ctx);
 NEWRLLAMA_API newrllama_error_code newrllama_tokenize(newrllama_model_handle model, const char* text, bool add_special, int32_t** tokens_out, size_t* n_tokens_out, const char** error_message);
 NEWRLLAMA_API newrllama_error_code newrllama_detokenize(newrllama_model_handle model, const int32_t* tokens, size_t n_tokens, char** text_out, const char** error_message);

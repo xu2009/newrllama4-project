@@ -60,8 +60,14 @@ static void verbosity_log_callback(ggml_log_level level, const char* text, void*
             break;
     }
     
-    if (should_log && original_log_callback) {
-        original_log_callback(level, text, original_log_user_data);
+    if (should_log) {
+        if (original_log_callback) {
+            original_log_callback(level, text, original_log_user_data);
+        } else {
+            // Default behavior: print to stderr
+            fprintf(stderr, "%s", text);
+            fflush(stderr);
+        }
     }
 }
 

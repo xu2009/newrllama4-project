@@ -8,7 +8,7 @@ if (!require(devtools, quietly = TRUE)) {
 }
 
 # Install the newrllama4 package from local directory
-devtools::install("newrllama4/")
+devtools::install("/Users/yaoshengleo/Desktop/newrllama_4_project/newrllama4")
 
 # Load the package and install backend
 library(newrllama4)
