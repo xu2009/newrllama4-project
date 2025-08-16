@@ -6,7 +6,8 @@
 #' Quick LLaMA Inference
 #'
 #' A high-level convenience function that provides one-line LLM inference.
-#' Automatically handles model downloading, loading, and text generation.
+#' Automatically handles model downloading, loading, and text generation with optional
+#' chat template formatting and system prompts for instruction-tuned models.
 #'
 #' @param prompt Character string or vector of prompts to process
 #' @param model Model URL or path (default: Llama-3.2-1B-Instruct Q4_K_M)
@@ -17,8 +18,13 @@
 #' @param temperature Sampling temperature (default: 0.7)
 #' @param top_p Top-p sampling (default: 0.9)
 #' @param top_k Top-k sampling (default: 40)
-#' @param repeat_penalty Repetition penalty (default: 1.1)
+#' @param verbosity Control verbosity of output (default: 1L). 0=all, 1=info+warnings+errors, 2=warnings+errors, 3=errors only
+#' @param repeat_last_n Number of recent tokens to consider for repetition penalty (default: 64)
+#' @param penalty_repeat Repetition penalty strength (default: 1.1)
 #' @param min_p Minimum probability threshold (default: 0.05)
+#' @param system_prompt System prompt to add to conversation (default: "You are a helpful assistant.")
+#' @param auto_format Whether to automatically apply chat template formatting (default: TRUE)
+#' @param chat_template Custom chat template to use (default: NULL uses model's built-in template)
 #' @param stream Whether to stream output (default: auto-detect based on interactive())
 #' @param seed Random seed for reproducibility (default: 1234)
 #' @param ... Additional parameters passed to generate() or generate_parallel()
@@ -29,28 +35,50 @@
 #'
 #' @examples
 #' \dontrun{
-#' # Simple usage
+#' # Simple usage with default chat template and system prompt
 #' response <- quick_llama("Hello, how are you?")
 #' 
-#' # Multiple prompts
-#' responses <- quick_llama(c("Summarize AI", "Explain quantum computing"))
+#' # Raw text generation without chat template
+#' raw_response <- quick_llama("Complete this: The capital of France is", 
+#'                            auto_format = FALSE)
 #' 
-#' # Custom parameters
+#' # Custom system prompt
+#' code_response <- quick_llama("Write a Python hello world program",
+#'                             system_prompt = "You are a Python programming expert.")
+#' 
+#' # No system prompt
+#' response <- quick_llama("What is AI?", system_prompt = NULL)
+#' 
+#' # Multiple prompts with custom settings
+#' responses <- quick_llama(c("Summarize AI", "Explain quantum computing"),
+#'                         temperature = 0.5, max_tokens = 150)
+#' 
+#' # High creativity with verbose output
 #' creative_response <- quick_llama("Tell me a story", 
 #'                                  temperature = 0.9, 
-#'                                  max_tokens = 200)
+#'                                  max_tokens = 200,
+#'                                  verbosity = 0L)
+#' 
+#' # Custom chat template (if supported by model)
+#' custom_response <- quick_llama("Explain photosynthesis",
+#'                               chat_template = "<|user|>\n{user}\n<|assistant|>\n")
 #' }
 quick_llama <- function(prompt,
                         model = .get_default_model(),
                         n_threads = NULL,
                         n_gpu_layers = "auto",
                         n_ctx = 2048L,
+                        verbosity = 1L,
                         max_tokens = 100L,
-                        temperature = 0.7,
+                        top_k = 20L,
                         top_p = 0.9,
-                        top_k = 40L,
-                        repeat_penalty = 1.1,
+                        temperature = 0.7,
+                        repeat_last_n = 64L,
+                        penalty_repeat = 1.1,
                         min_p = 0.05,
+                        system_prompt = "You are a helpful assistant.",
+                        auto_format = TRUE,
+                        chat_template = NULL,
                         stream = NULL,
                         seed = 1234L,
                         ...) {
@@ -85,20 +113,57 @@ quick_llama <- function(prompt,
   
   # Load model and context if not cached or if different model
   tryCatch({
-    .ensure_model_loaded(model, n_gpu_layers, n_ctx, n_threads)
+    .ensure_model_loaded(model, n_gpu_layers, n_ctx, n_threads, verbosity)
   }, error = function(e) {
     stop("Failed to load model: ", e$message, call. = FALSE)
   })
   
+  # Format prompt with chat template if requested
+  if (auto_format) {
+    # Create messages structure
+    if (!is.null(system_prompt) && nchar(system_prompt) > 0) {
+      messages <- list(
+        list(role = "system", content = system_prompt),
+        list(role = "user", content = prompt)
+      )
+    } else {
+      messages <- list(
+        list(role = "user", content = prompt)
+      )
+    }
+    
+    # Apply chat template
+    formatted_prompt <- apply_chat_template(.quick_llama_env$model, messages, 
+                                           template = chat_template, add_assistant = TRUE)
+  } else {
+    formatted_prompt <- prompt
+  }
+  
   # Generate text
   if (length(prompt) == 1) {
     # Single prompt
-    .generate_single(prompt, max_tokens, top_k, top_p, temperature, 
-                     repeat_penalty, seed, stream, ...)
+    .generate_single(formatted_prompt, max_tokens, top_k, top_p, temperature, 
+                     repeat_last_n, penalty_repeat, seed, stream, min_p = min_p, ...)
   } else {
-    # Multiple prompts
-    .generate_multiple(prompt, max_tokens, top_k, top_p, temperature, 
-                       repeat_penalty, seed, stream, ...)
+    # Multiple prompts - apply formatting to each prompt
+    if (auto_format) {
+      formatted_prompts <- sapply(prompt, function(p) {
+        if (!is.null(system_prompt) && nchar(system_prompt) > 0) {
+          msgs <- list(
+            list(role = "system", content = system_prompt),
+            list(role = "user", content = p)
+          )
+        } else {
+          msgs <- list(list(role = "user", content = p))
+        }
+        apply_chat_template(.quick_llama_env$model, msgs, 
+                           template = chat_template, add_assistant = TRUE)
+      })
+    } else {
+      formatted_prompts <- prompt
+    }
+    .generate_multiple(formatted_prompts, max_tokens, top_k, top_p, temperature, 
+                       repeat_last_n, penalty_repeat, seed, stream, min_p = min_p, ...)
   }
 }
 
@@ -174,10 +239,11 @@ quick_llama_reset <- function() {
 #' @param n_gpu_layers Number of GPU layers
 #' @param n_ctx Context size
 #' @param n_threads Number of threads
+#' @param verbosity Verbosity level
 #' @noRd
-.ensure_model_loaded <- function(model_path, n_gpu_layers, n_ctx, n_threads) {
+.ensure_model_loaded <- function(model_path, n_gpu_layers, n_ctx, n_threads, verbosity = 1L) {
   # Check if we have a cached model and context for this configuration
-  cache_key <- paste0(model_path, "_", n_gpu_layers, "_", n_ctx, "_", n_threads)
+  cache_key <- paste0(model_path, "_", n_gpu_layers, "_", n_ctx, "_", n_threads, "_", verbosity)
   
   if (exists("cache_key", envir = .quick_llama_env) && 
       identical(.quick_llama_env$cache_key, cache_key) &&
@@ -189,11 +255,11 @@ quick_llama_reset <- function() {
   
   # Load model
   message("Loading model...")
-  model_obj <- model_load(model_path, n_gpu_layers = n_gpu_layers, show_progress = TRUE)
+  model_obj <- model_load(model_path, n_gpu_layers = n_gpu_layers, show_progress = TRUE, verbosity = verbosity)
   
   # Create context
   message("Creating context...")
-  context_obj <- context_create(model_obj, n_ctx = n_ctx, n_threads = n_threads)
+  context_obj <- context_create(model_obj, n_ctx = n_ctx, n_threads = n_threads, verbosity = verbosity)
   
   # Cache the objects
   .quick_llama_env$model <- model_obj
@@ -234,7 +300,8 @@ quick_llama_reset <- function() {
                       top_k = top_k,
                       top_p = top_p,
                       temperature = temperature,
-                      penalty_repeat = repeat_penalty,
+                      repeat_last_n = repeat_last_n,
+                      penalty_repeat = penalty_repeat,
                       seed = seed,
                       ...)
     cat(result, "\n")
@@ -246,7 +313,8 @@ quick_llama_reset <- function() {
                       top_k = top_k,
                       top_p = top_p,
                       temperature = temperature,
-                      penalty_repeat = repeat_penalty,
+                      repeat_last_n = repeat_last_n,
+                      penalty_repeat = penalty_repeat,
                       seed = seed,
                       ...)
     return(result)
@@ -259,14 +327,15 @@ quick_llama_reset <- function() {
 #' @param top_k Top-k sampling
 #' @param top_p Top-p sampling
 #' @param temperature Temperature
-#' @param repeat_penalty Repetition penalty
+#' @param repeat_last_n Number of recent tokens for repetition penalty
+#' @param penalty_repeat Repetition penalty strength
 #' @param seed Random seed
 #' @param stream Whether to stream
 #' @param ... Additional parameters
 #' @return Named list of generated texts
 #' @noRd
 .generate_multiple <- function(prompts, max_tokens, top_k, top_p, temperature, 
-                               repeat_penalty, seed, stream, ...) {
+                               repeat_last_n, penalty_repeat, seed, stream, ...) {
   
   context <- .quick_llama_env$context
   
@@ -283,7 +352,7 @@ quick_llama_reset <- function() {
       cat("Output: ")
       
       result <- .generate_single(prompts[i], max_tokens, top_k, top_p, 
-                                temperature, repeat_penalty, seed, 
+                                temperature, repeat_last_n, penalty_repeat, seed, 
                                 stream = FALSE, ...)
       cat(result, "\n")
       results[[i]] <- result
@@ -297,7 +366,8 @@ quick_llama_reset <- function() {
                                 top_k = top_k,
                                 top_p = top_p,
                                 temperature = temperature,
-                                penalty_repeat = repeat_penalty,
+                                repeat_last_n = repeat_last_n,
+                                penalty_repeat = penalty_repeat,
                                 seed = seed,
                                 ...)
     

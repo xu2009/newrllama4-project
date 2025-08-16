@@ -337,8 +337,9 @@ apply_chat_template <- function(model, messages, template = NULL, add_assistant 
 #' predictable <- generate(ctx, tokens, max_tokens = 30, temperature = 0.5, seed = 42)
 #' }
 #' @seealso \code{\link{quick_llama}}, \code{\link{generate_parallel}}, \code{\link{tokenize}}, \code{\link{context_create}}
-generate <- function(context, tokens, max_tokens = 100L, top_k = 40L, top_p = 0.9, 
-                     temperature = 0.8, repeat_last_n = 64L, penalty_repeat = 1.1, seed = -1L) {
+generate <- function(context, tokens, max_tokens = 100L, top_k = 20L, top_p = 0.9,
+                     temperature = 0.7, repeat_last_n = 64L, penalty_repeat = 1.1,
+                     seed = 1234L) {
   .ensure_backend_loaded()
   if (!inherits(context, "newrllama_context")) {
     stop("Expected a newrllama_context object", call. = FALSE)
