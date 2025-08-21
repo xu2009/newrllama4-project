@@ -281,6 +281,11 @@ NEWRLLAMA_API void newrllama_free_tokens(int32_t* tokens) {
 }
 
 NEWRLLAMA_API newrllama_error_code newrllama_apply_chat_template(newrllama_model_handle model, const char* tmpl, const struct newrllama_chat_message* messages_in, size_t n_messages, bool add_ass, char** result_out, const char** error_message) { 
+    if (!model) {
+        set_error(error_message, "Model handle is null.");
+        return NEWRLLAMA_ERROR;
+    }
+
     std::vector<llama_chat_message> messages_vec(n_messages); 
     size_t total_length = 0; 
     for(size_t i = 0; i < n_messages; ++i) { 
@@ -289,11 +294,28 @@ NEWRLLAMA_API newrllama_error_code newrllama_apply_chat_template(newrllama_model
     } 
     size_t buffer_size = total_length * 2 + 2048; 
     std::vector<char> buffer(buffer_size, 0); 
-    int32_t res = llama_chat_apply_template(tmpl, messages_vec.data(), n_messages, add_ass, buffer.data(), buffer.size()); 
+    
+    // 🔧 修复：正确调用llama.cpp API
+    // 当tmpl为NULL时，llama_chat_apply_template会自动使用模型内置的template
+    int32_t res = llama_chat_apply_template(model, tmpl, messages_vec.data(), n_messages, add_ass, buffer.data(), buffer.size()); 
+    
     if (res < 0) { 
-        set_error(error_message, "Failed to apply chat template. Error code: " + std::to_string(res)); 
+        // 提供更详细的错误信息
+        std::string error_msg = "Failed to apply chat template. Error code: " + std::to_string(res);
+        if (res == -1) {
+            error_msg += " (template not found or invalid)";
+        } else if (res == -2) {
+            error_msg += " (buffer too small)";
+        }
+        if (tmpl) {
+            error_msg += ". Custom template used: " + std::string(tmpl, 0, 100) + "...";
+        } else {
+            error_msg += ". Using model's built-in template.";
+        }
+        set_error(error_message, error_msg); 
         return NEWRLLAMA_ERROR; 
     } 
+    
     *result_out = string_to_c_str(std::string(buffer.data(), res)); 
     return NEWRLLAMA_SUCCESS; 
 }
@@ -687,8 +709,43 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
                 std::string error_result = "[ERROR] " + client.error_msg;
                 (*results_out)[i] = string_to_c_str(error_result);
             } else {
-                // 清理响应文本
+                // 🧹 增强的响应文本清理
                 std::string clean_response = client.response;
+                
+                // 定义所有可能的停止标记
+                const std::vector<std::string> stop_markers = {
+                    "<|im_end|>",
+                    "<|im_start|>", 
+                    "<end_of_turn>",
+                    "<start_of_turn>",
+                    "</s>",
+                    "<s>",
+                    "<|endoftext|>",
+                    "<|end|>",
+                    "<|start|>",
+                    "<eos>",
+                    "<bos>",
+                    "\n<|im_end|>",
+                    "\n<end_of_turn>",
+                    "\n</s>"
+                };
+                
+                // 逐个移除停止标记（多轮清理确保彻底）
+                bool found_marker = true;
+                int cleanup_rounds = 0;
+                while (found_marker && cleanup_rounds < 5) {
+                    found_marker = false;
+                    cleanup_rounds++;
+                    
+                    for (const auto& marker : stop_markers) {
+                        size_t pos = 0;
+                        while ((pos = clean_response.find(marker, pos)) != std::string::npos) {
+                            clean_response.erase(pos, marker.length());
+                            found_marker = true;
+                            // 不增加pos，从当前位置重新搜索
+                        }
+                    }
+                }
                 
                 // 移除无效字符
                 while (!clean_response.empty() && 

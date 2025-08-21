@@ -17,6 +17,8 @@ export(context_create)
 export(tokenize)
 export(detokenize)
 export(apply_chat_template)
+export(apply_gemma_chat_template)
+export(smart_chat_template)
 export(generate)
 export(generate_parallel)
 
