@@ -295,9 +295,16 @@ NEWRLLAMA_API newrllama_error_code newrllama_apply_chat_template(newrllama_model
     size_t buffer_size = total_length * 2 + 2048; 
     std::vector<char> buffer(buffer_size, 0); 
     
-    // 🔧 修复：正确调用llama.cpp API
-    // 当tmpl为NULL时，llama_chat_apply_template会自动使用模型内置的template
-    int32_t res = llama_chat_apply_template(model, tmpl, messages_vec.data(), n_messages, add_ass, buffer.data(), buffer.size()); 
+    // 🔧 修复：正确的两步法实现模型内置template支持
+    // 第一步：确定使用哪个template
+    const char* effective_tmpl = tmpl; // 用户提供的template
+    if (!effective_tmpl) {
+        // 如果用户没有提供template，从模型获取默认template
+        effective_tmpl = llama_model_chat_template(model, nullptr);
+    }
+
+    // 第二步：调用llama_chat_apply_template（标准6参数版本）
+    int32_t res = llama_chat_apply_template(effective_tmpl, messages_vec.data(), n_messages, add_ass, buffer.data(), buffer.size()); 
     
     if (res < 0) { 
         // 提供更详细的错误信息
