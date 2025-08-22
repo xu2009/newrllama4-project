@@ -332,6 +332,10 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate(newrllama_context_handle c
         set_error(error_message, "Context handle is null."); 
         return NEWRLLAMA_ERROR; 
     } 
+    
+    // 🔧 修复：清除KV缓存确保可重复性
+    llama_kv_cache_clear(ctx);
+    
     const llama_model* model = llama_get_model(ctx); 
     const struct llama_vocab* vocab = llama_model_get_vocab(model); 
     llama_token eos_token = llama_vocab_eos(vocab); 
