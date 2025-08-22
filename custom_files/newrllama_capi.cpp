@@ -40,23 +40,23 @@ static thread_local void* original_log_user_data = nullptr;
 static void verbosity_log_callback(ggml_log_level level, const char* text, void* user_data) {
     int verbosity = current_verbosity;
     
-    // Filter messages based on verbosity level
+    // Filter messages based on verbosity level (3=most, 2,1,0=decreasing)
     bool should_log = false;
     switch (verbosity) {
-        case 0: // Show all (DEBUG + INFO + WARN + ERROR)
+        case 3: // Show all (DEBUG + INFO + WARN + ERROR) - Most verbose
             should_log = true;
             break;
-        case 1: // Show important info (INFO + WARN + ERROR)
+        case 2: // Show important info (INFO + WARN + ERROR)
             should_log = (level >= GGML_LOG_LEVEL_INFO);
             break;
-        case 2: // Show warnings and errors only (WARN + ERROR)
+        case 1: // Show warnings and errors only (WARN + ERROR) - Default
             should_log = (level >= GGML_LOG_LEVEL_WARN);
             break;
-        case 3: // Show errors only or silent
+        case 0: // Show errors only - Least verbose
             should_log = (level >= GGML_LOG_LEVEL_ERROR);
             break;
         default:
-            should_log = (level >= GGML_LOG_LEVEL_INFO); // Fallback to level 1
+            should_log = (level >= GGML_LOG_LEVEL_WARN); // Fallback to level 1 (default)
             break;
     }
     
