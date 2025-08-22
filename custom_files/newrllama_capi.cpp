@@ -357,15 +357,38 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate(newrllama_context_handle c
     for (int i = 0; i < max_tokens; ++i) { 
         llama_token new_token = llama_sampler_sample(sampler_chain, ctx, -1); 
         llama_sampler_accept(sampler_chain, new_token); 
+        
+        // 🔧 修复：先检查EOG token
         if (new_token == eos_token || llama_vocab_is_eog(vocab, new_token)) break; 
-        generated_text += common_token_to_piece(ctx, new_token); 
+        
+        // 转换token为文本
+        const std::string token_str = common_token_to_piece(ctx, new_token);
+        generated_text += token_str;
+        
+        // 🔧 新增：检查字符串级别的停止标记
+        const std::vector<std::string> stop_markers = {
+            "<end_of_turn>", "<|im_end|>", "</s>", "<eos>", 
+            "<start_of_turn>", "<|im_start|>", "<s>", "<bos>"
+        };
+        
+        for (const auto& marker : stop_markers) {
+            size_t pos = generated_text.find(marker);
+            if (pos != std::string::npos) {
+                // 找到停止标记，截断并退出
+                generated_text = generated_text.substr(0, pos);
+                goto generation_complete;  // 跳出双重循环
+            }
+        }
+        
         llama_batch next_batch = llama_batch_get_one(&new_token, 1); 
         if (llama_decode(ctx, next_batch) != 0) { 
             llama_sampler_free(sampler_chain); 
             set_error(error_message, "Failed to decode generated token."); 
             return NEWRLLAMA_ERROR; 
         } 
-    } 
+    }
+    
+    generation_complete: 
     llama_sampler_free(sampler_chain); 
     *result_out = string_to_c_str(generated_text); 
     return NEWRLLAMA_SUCCESS; 
@@ -645,10 +668,10 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
                         const llama_token new_token = common_sampler_sample(client.smpl, ctx, batch_pos);
                         common_sampler_accept(client.smpl, new_token, true);
                         
-                        // 检查终止条件
+                        // 🔧 修复停止标记泄漏：先检查停止条件，再决定是否添加到输出
                         bool should_stop = false;
                         
-                        // EOS token检查
+                        // EOS token检查 - 如果是停止标记，直接停止，不添加到输出
                         if (new_token == eos_token || llama_vocab_is_eog(vocab, new_token)) {
                             should_stop = true;
                         }
@@ -658,18 +681,23 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
                             should_stop = true;
                         }
                         
-                        // 转换token为文本
-                        const std::string token_str = common_token_to_piece(ctx, new_token);
-                        client.response += token_str;
+                        // 🔑 关键修复：只有在非停止状态下才添加token到输出
+                        if (!should_stop) {
+                            // 转换token为文本并添加到响应
+                            const std::string token_str = common_token_to_piece(ctx, new_token);
+                            client.response += token_str;
+                            
+                            // 对话终止检查（仅在已添加内容后检查）
+                            if (client.n_decoded > 5 && 
+                                (client.response.find("\n\nUser:") != std::string::npos || 
+                                 client.response.find("\n\nHuman:") != std::string::npos)) {
+                                should_stop = true;
+                            }
+                        }
+                        
+                        // 更新客户端状态（无论是否停止都需要更新）
                         client.sampled = new_token;
                         client.n_decoded++;
-                        
-                        // 对话终止检查
-                        if (client.n_decoded > 5 && 
-                            (client.response.find("\n\nUser:") != std::string::npos || 
-                             client.response.find("\n\nHuman:") != std::string::npos)) {
-                            should_stop = true;
-                        }
                         
                         if (should_stop) {
                             client.finished = true;
