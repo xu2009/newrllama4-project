@@ -362,27 +362,14 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate(newrllama_context_handle c
         llama_token new_token = llama_sampler_sample(sampler_chain, ctx, -1); 
         llama_sampler_accept(sampler_chain, new_token); 
         
-        // 🔧 修复：先检查EOG token
-        if (new_token == eos_token || llama_vocab_is_eog(vocab, new_token)) break; 
+        // 🔧 修复：先检查EOG token，如果是停止标记直接退出，不添加到输出
+        if (new_token == eos_token || llama_vocab_is_eog(vocab, new_token)) {
+            break; // 停止生成，EOG tokens不会被添加到输出
+        }
         
-        // 转换token为文本
+        // 只有非停止token才转换并添加到输出
         const std::string token_str = common_token_to_piece(ctx, new_token);
         generated_text += token_str;
-        
-        // 🔧 新增：检查字符串级别的停止标记
-        const std::vector<std::string> stop_markers = {
-            "<end_of_turn>", "<|im_end|>", "</s>", "<eos>", 
-            "<start_of_turn>", "<|im_start|>", "<s>", "<bos>"
-        };
-        
-        for (const auto& marker : stop_markers) {
-            size_t pos = generated_text.find(marker);
-            if (pos != std::string::npos) {
-                // 找到停止标记，截断并退出
-                generated_text = generated_text.substr(0, pos);
-                goto generation_complete;  // 跳出双重循环
-            }
-        }
         
         llama_batch next_batch = llama_batch_get_one(&new_token, 1); 
         if (llama_decode(ctx, next_batch) != 0) { 
@@ -392,7 +379,6 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate(newrllama_context_handle c
         } 
     }
     
-    generation_complete: 
     llama_sampler_free(sampler_chain); 
     *result_out = string_to_c_str(generated_text); 
     return NEWRLLAMA_SUCCESS; 
