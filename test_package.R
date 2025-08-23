@@ -3,8 +3,8 @@ library(newrllama4)
 # ===================================================================
 # 基础模型加载（这部分保持不变）
 # ===================================================================
-model <- model_load("/Users/yaoshengleo/Downloads/gemma-3-12b-it-q4_0.gguf", n_gpu_layers = 500L, verbosity = 3)
-ctx <- context_create(model, n_ctx = 4096, n_seq_max = 64, verbosity = 3)
+model <- model_load("/Users/yaoshengleo/Downloads/gemma-3-12b-it-q4_0.gguf", n_gpu_layers = "auto", verbosity = 3)
+ctx <- context_create(model, n_ctx = 4096, n_seq_max = 64, verbosity = 2)
 
 # ===================================================================
 # 1. 无chat template的原始生成（保持不变）
@@ -61,7 +61,7 @@ rm(model, ctx)  # 清理资源
 
 quick_llama_reset()
 result <- quick_llama("Tell me a joke.",
-                      n_gpu_layers = 500L,
+                      n_gpu_layers = "auto",
                       max_tokens = 200,
                       verbosity = 1)
 result
@@ -74,7 +74,7 @@ backend_free()
 # 5. 并行生成优化版本
 # ===================================================================
 # 重新加载模型用于并行测试
-model <- model_load("/Users/yaoshengleo/Downloads/gemma-3-12b-it-q4_0.gguf", n_gpu_layers = 500L, verbosity = 1)
+model <- model_load("/Users/yaoshengleo/Downloads/gemma-3-12b-it-q4_0.gguf", n_gpu_layers = "auto", verbosity = 3)
 ctx <- context_create(model, n_ctx = 4096, n_seq_max = 512, verbosity = 1)
 
 system_prompt <- "You are a helpful assistant."

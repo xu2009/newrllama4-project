@@ -205,13 +205,22 @@ quick_llama_reset <- function() {
 .clean_output <- function(text) {
   if (!is.character(text) || length(text) == 0) return(text)
   
-  # Remove common chat template special tokens
+  # Remove Llama-3.2 specific chat template tokens (highest priority)
+  text <- gsub("<\\|eot_id\\|>.*$", "", text)
+  text <- gsub("<\\|start_header_id\\|>.*$", "", text) 
+  text <- gsub("<\\|end_header_id\\|>.*$", "", text)
+  
+  # Remove other common chat template special tokens
   text <- gsub("<\\|im_start\\|>.*$", "", text)
   text <- gsub("<\\|im_end\\|>.*$", "", text)
   text <- gsub("<\\|end\\|>.*$", "", text)
   text <- gsub("<\\|assistant\\|>.*$", "", text)
   text <- gsub("<\\|user\\|>.*$", "", text)
   text <- gsub("<\\|system\\|>.*$", "", text)
+  
+  # Remove any remaining template tokens (catch-all patterns)
+  text <- gsub("<\\|[^|]+\\|>.*$", "", text)
+  text <- gsub("<[^>]*>.*$", "", text)
   
   # Trim whitespace
   text <- trimws(text)

@@ -4,638 +4,238 @@
 [![codecov](https://codecov.io/gh/xu2009/newrllama4-project/branch/main/graph/badge.svg)](https://codecov.io/gh/xu2009/newrllama4-project)
 [![CRAN status](https://www.r-pkg.org/badges/version/newrllama4)](https://CRAN.R-project.org/package=newrllama4)
 
-**R Interface to Local Large Language Models with Privacy Protection**
+## Brief Introduction
 
-`newrllama4` is an R package that provides access to open-source large language models (LLMs) through the high-performance [llama.cpp](https://github.com/ggerganov/llama.cpp) backend. Built on the industry-leading C++ inference engine, this package enables researchers and data analysts to run powerful language models entirely on their local machines, ensuring complete data privacy and eliminating the need for external API services.
-
-**Key Features:**
-- **Local Execution**: All model inference runs locally on your computer, keeping your data private
-- **Open Source Models**: Use any GGUF format model from Hugging Face, including Llama, Mistral, and specialized research models
-- **High Performance**: Built on llama.cpp, the fastest open-source LLM inference engine
-- **Zero External Dependencies**: No API keys, internet calls, or cloud services required for inference
-- **Research-Friendly**: Designed specifically for academic and research workflows
-
----
-
-## Quick Start
-
-Get started with large language models in R in three steps:
-
-```r
-# Step 1: Install the R package from CRAN
-install.packages("newrllama4")
-
-# Step 2: Download the backend library (first-time setup)
-library(newrllama4)
-install_newrllama()
-
-# Step 3: Generate text using a GGUF format language model
-response <- quick_llama("Explain the concept of statistical significance")
-print(response)
-```
-
----
-
-## Introduction to Large Language Models
-
-Large Language Models (LLMs) are neural networks trained on vast amounts of text data that can understand and generate human language. This package enables you to run these models locally for complete privacy. Key concepts:
-
-- **Large Language Models**: AI systems that process and generate text based on patterns learned from training data, running entirely on your local machine
-- **llama.cpp**: The high-performance C++ inference engine that powers this package, providing optimal speed for local model execution
-- **GGUF Format**: An efficient binary format for storing and loading language models, optimized for local inference without cloud dependencies
-- **Open Source Models**: Use models from Hugging Face and other repositories, including Llama, Mistral, CodeLlama, and specialized research models
-- **Local Privacy**: All computation happens on your machine - no data is sent to external servers or APIs
-
-### Research Applications
-
-- **Text Analysis**: Automated content analysis, sentiment analysis, and text classification
-- **Data Documentation**: Generate descriptions and summaries of datasets and analytical results  
-- **Code Generation**: Produce R code snippets and analysis templates
-- **Literature Review**: Summarize research papers and extract key findings
-- **Survey Analysis**: Process and categorize open-ended survey responses
+The `newrllama4` package lets you run powerful language models directly on your computer using R. You can ask questions, generate text, and analyze data without sending anything to external services. This tutorial will show you how to install the package and start generating text in just a few minutes.
 
 ---
 
 ## Installation
 
-### System Requirements
-
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| **R Version** | R ≥ 4.0 | R ≥ 4.2 |
-| **Memory** | 4GB RAM | 8GB+ RAM |
-| **Storage** | 2GB available | 5GB+ available |
-| **Network** | Required for downloads | Stable connection |
-
-### Supported Platforms
-
-- **macOS**: Apple Silicon (M1/M2/M3) and Intel processors
-- **Windows**: 64-bit systems
-- **Linux**: 64-bit distributions (Ubuntu, CentOS, etc.)
-
-### Installation Steps
-
-#### Step 1: Install R Package
+You need to install both the R package and a small backend library that does the heavy computation.
 
 ```r
-# Method 1: Install from CRAN (recommended)
+# Install the R package
 install.packages("newrllama4")
 
-# Method 2: Development version from GitHub
-if (!require(devtools)) install.packages("devtools")
-devtools::install_github("xu2009/newrllama4-project", subdir = "newrllama4")
-```
-
-#### Step 2: Download Backend Library
-
-```r
+# Load the package and install the backend
 library(newrllama4)
-
-# Automatically detects your system and downloads the appropriate backend (~1MB)
 install_newrllama()
 ```
 
-#### Step 3: Verify Installation
-
-```r
-# Check if installation was successful
-if (lib_is_installed()) {
-  message("Installation successful!")
-} else {
-  message("Installation failed. See troubleshooting section.")
-}
-```
-
-### Common Installation Issues
-
-| Issue | Solution |
-|-------|----------|
-| **Network connection failed** | Check firewall settings or try using a VPN |
-| **Insufficient permissions** | Run R as administrator/with elevated privileges |
-| **Insufficient disk space** | Free up disk space (minimum 2GB required) |
-| **R version too old** | Update to R 4.0 or higher |
+That's it! The installation will automatically detect your system and download the right version.
 
 ---
 
-## Core Functionality
+## Quick Start
 
-### Level 1: Basic Usage with `quick_llama()`
-
-The simplest way to use the package for text generation:
+Let's generate your first text response:
 
 ```r
+# Load the package
 library(newrllama4)
 
-# Basic text generation
+# Ask a question and get a response
 response <- quick_llama("What is machine learning?")
 print(response)
-
-# Creative writing with higher temperature
-story <- quick_llama("Write a short story about a data scientist", 
-                     temperature = 0.9,  # More creative output
-                     max_tokens = 200)   # Longer response
-
-# Process multiple questions
-questions <- c("Explain regression analysis", 
-               "What is clustering?", 
-               "Recommend data visualization tools")
-answers <- quick_llama(questions)
 ```
 
-#### Parameter Tuning Guidelines
+The first time you run this, it will download a language model (about 1GB). After that, everything runs locally on your computer.
+
+---
+
+## Running Example
+
+Let's work with a simple example throughout this tutorial. Imagine you have a dataset with customer feedback that you want to analyze:
 
 ```r
-# Precise answers (suitable for factual questions)
-precise <- quick_llama("What is the formula for standard deviation?", 
-                       temperature = 0.1,  # Low temperature = more accurate
-                       max_tokens = 50)
-
-# Creative responses (suitable for open-ended tasks)
-creative <- quick_llama("Design a data analysis project", 
-                        temperature = 0.8,  # High temperature = more creative
-                        max_tokens = 300)
-
-# Batch processing (for multiple tasks)
-prompts <- paste("Analyze the characteristics of dataset", 1:10)
-results <- quick_llama(prompts, max_tokens = 100)
-```
-
-### Level 2: Intermediate Control - Model Management
-
-When you need more control over the generation process:
-
-```r
-# Load a specific GGUF format model (will download if needed)
-model <- model_load("https://huggingface.co/microsoft/DialoGPT-medium/model.gguf")
-
-# Create inference context with custom settings
-ctx <- context_create(model, 
-                      n_ctx = 4096,     # Longer conversation memory
-                      n_threads = 8)    # Use more CPU cores
-
-# Manual text generation
-tokens <- tokenize(model, "Please explain deep learning")
-result <- generate(ctx, tokens, max_tokens = 150)
-text <- detokenize(model, result)
-```
-
-### Level 3: Advanced Features
-
-#### Multi-turn Conversations
-
-```r
-# Load a chat-optimized GGUF model
-model <- model_load("path/to/chat_model.gguf")
-
-# Build conversation history
-messages <- list(
-  list(role = "system", content = "You are a professional data science consultant"),
-  list(role = "user", content = "I want to learn R programming"),
-  list(role = "assistant", content = "Great choice! R is excellent for statistical analysis..."),
-  list(role = "user", content = "Please recommend some beginner books")
+# Sample customer feedback data
+feedback_data <- data.frame(
+  customer_id = 1:4,
+  feedback = c(
+    "The product quality is excellent, very satisfied!",
+    "Delivery was slow, but the item was good.",
+    "Poor customer service, very disappointed.",
+    "Great value for money, will buy again!"
+  )
 )
 
-# Apply chat template formatting
-formatted_prompt <- apply_chat_template(model, messages)
-response <- quick_llama(formatted_prompt)
+print(feedback_data)
 ```
 
-#### GPU Acceleration Setup
+Now you can analyze each piece of feedback:
 
 ```r
-# Enable GPU acceleration (if available) for GGUF models
-gpu_model <- model_load("model.gguf", 
-                        n_gpu_layers = -1,  # Use all GPU layers
-                        use_mlock = TRUE)   # Lock model in memory
-
-# Create context optimized for GPU
-ctx_gpu <- context_create(gpu_model, 
-                          n_ctx = 8192,     # Larger context window
-                          n_threads = 4)    # Fewer CPU threads when using GPU
+# Analyze the sentiment of the first feedback
+result <- quick_llama(paste("Analyze the sentiment of this feedback:", 
+                           feedback_data$feedback[1]))
+print(result)
 ```
 
-### Level 4: Research Applications
-
-#### Data Analysis Assistant
+You can also ask for specific information:
 
 ```r
-# Create a data analysis helper function
-analyze_data <- function(dataset_description) {
-  prompt <- paste("As a data scientist, please analyze the following dataset:", 
-                  dataset_description,
-                  "Please provide: 1) Data characteristics 2) Analysis recommendations 3) Potential issues")
+# Extract key topics
+topics <- quick_llama(paste("What are the main topics in this feedback:", 
+                           feedback_data$feedback[2]))
+print(topics)
+```
+
+---
+
+## For Loop for Running Example
+
+When you have multiple pieces of text to analyze, you can use a simple loop:
+
+```r
+# Analyze sentiment for all feedback
+sentiment_results <- c()
+
+for(i in 1:nrow(feedback_data)) {
+  prompt <- paste("Classify the sentiment as positive, negative, or neutral:", 
+                  feedback_data$feedback[i])
+  sentiment <- quick_llama(prompt)
+  sentiment_results[i] <- sentiment
   
-  return(quick_llama(prompt, 
-                     temperature = 0.3,  # Maintain analytical rigor
-                     max_tokens = 300))
+  # Show progress
+  cat("Processed feedback", i, "of", nrow(feedback_data), "\n")
 }
 
-# Usage example
-result <- analyze_data("E-commerce purchase data with 1000 users, including age, gender, and purchase amount variables")
+# Add results to your data
+feedback_data$sentiment <- sentiment_results
+print(feedback_data)
 ```
 
-#### R Code Generation
-
-```r
-# R code assistant function
-generate_r_code <- function(task_description) {
-  prompt <- paste("Generate R code to complete the following task:", 
-                  task_description,
-                  "Return only executable R code with necessary comments.")
-  
-  return(quick_llama(prompt, temperature = 0.2))
-}
-
-# Example usage
-code <- generate_r_code("Create a scatter plot showing the relationship between height and weight, including a regression line")
-cat(code)
-```
+This will process each piece of feedback one by one and show you the progress.
 
 ---
 
-## Real-world Applications
+## Parallel Generation
 
-### 1. Literature Review Assistant
-
-```r
-# Literature review helper
-literature_review <- function(topic, keywords) {
-  prompt <- paste("Create a literature review outline for the following topic:", topic,
-                  "Keywords:", paste(keywords, collapse = ", "))
-  return(quick_llama(prompt, max_tokens = 400))
-}
-
-outline <- literature_review("Machine learning applications in medical diagnosis", 
-                           c("deep learning", "medical imaging", "diagnostic accuracy"))
-```
-
-### 2. Automated Report Generation
+When you have many texts to process, you can speed things up by running multiple generations at the same time. Instead of processing one feedback at a time, you can process them all together:
 
 ```r
-# Generate analysis reports
-generate_report <- function(data_summary) {
-  prompt <- paste("Generate a professional analysis report based on the following data summary:", 
-                  data_summary,
-                  "Include key findings, trend analysis, and recommendations.")
-  return(quick_llama(prompt, temperature = 0.4, max_tokens = 500))
-}
+# Create prompts for all feedback at once
+all_prompts <- paste("Classify the sentiment as positive, negative, or neutral:", 
+                     feedback_data$feedback)
+
+# Process all prompts simultaneously
+all_results <- quick_llama(all_prompts)
+
+# Add results to your data
+feedback_data$sentiment <- all_results
+print(feedback_data)
 ```
 
-### 3. Teaching Assistant
-
-```r
-# Statistical concept explainer
-explain_concept <- function(concept, level = "beginner") {
-  prompt <- paste("Explain the statistical concept", concept, "at a", level, "level.",
-                  "Use simple language and practical examples.")
-  return(quick_llama(prompt, temperature = 0.3))
-}
-
-explanation <- explain_concept("p-value", "beginner")
-```
+This is much faster than using a loop because the model processes everything in one go.
 
 ---
 
-## Performance Optimization
+## Customization
 
-### Speed Optimization
+You can adjust how the model generates text by changing various settings.
 
-```r
-# Optimized configuration example for GGUF models
-optimized_model <- model_load(
-  model_path = "model.gguf",
-  n_gpu_layers = -1,        # Full GPU acceleration
-  use_mmap = TRUE,          # Memory mapping
-  use_mlock = TRUE,         # Lock in memory
-  check_memory = TRUE       # Memory checking
-)
+### Temperature / Determinism
 
-optimized_ctx <- context_create(
-  model = optimized_model,
-  n_ctx = 4096,             # Moderate context length
-  n_threads = parallel::detectCores() - 1  # Use most CPU cores
-)
-```
-
-### Memory Management
-
-| Configuration | Memory Usage | Speed | Recommended For |
-|---------------|--------------|-------|----------------|
-| **CPU Only** | Low | Medium | General tasks, memory constrained |
-| **Partial GPU** | Medium | High | Balanced performance and memory |
-| **Full GPU** | High | Highest | High-performance requirements |
+Temperature controls how creative or predictable the responses are:
 
 ```r
-# Memory-efficient configuration for GGUF models
-memory_efficient <- model_load("model.gguf", 
-                               n_gpu_layers = 0,     # CPU only
-                               use_mmap = TRUE,      # Reduce memory usage
-                               use_mlock = FALSE)
+# Very predictable responses (good for factual questions)
+factual <- quick_llama("What is the capital of France?", temperature = 0.1)
 
-# High-performance configuration for GGUF models (requires sufficient memory)
-high_performance <- model_load("model.gguf",
-                               n_gpu_layers = -1,    # Full GPU
-                               use_mlock = TRUE)     # Maximum speed
+# More creative responses (good for writing tasks)
+creative <- quick_llama("Write a short story about a robot", temperature = 0.9)
 ```
 
-### Parameter Tuning Guidelines
+Use low temperature (0.1-0.3) for factual questions and high temperature (0.7-1.0) for creative writing.
 
-#### Temperature Setting Guide
+### Model Download
 
-- **0.1-0.3**: Academic and professional answers (high factual accuracy)
-- **0.4-0.6**: Business and daily conversations (balanced)
-- **0.7-0.9**: Creative writing and brainstorming
-- **1.0+**: Highly creative output (may be incoherent)
-
-#### Max Tokens Selection
-
-- **50-100**: Brief answers and summaries
-- **100-300**: Standard explanations and analysis
-- **300-500**: Detailed reports and long-form content
-- **500+**: Articles and in-depth analysis
-
----
-
-## Troubleshooting
-
-### Common Errors and Solutions
-
-#### "Backend library not found"
-
-**Cause**: Backend engine not properly installed
-
-**Solution**:
-```r
-# Reinstall backend
-install_newrllama()
-
-# Check installation status
-lib_is_installed()
-
-# View library path
-get_lib_path()
-```
-
-#### "Model loading failed"
-
-**Cause**: Corrupted model file or network issues
-
-**Solution**:
-```r
-# Force re-download of GGUF model
-model <- model_load("model_url", force_redownload = TRUE)
-
-# Check disk space
-file.info(get_model_cache_dir())
-```
-
-#### "Out of memory"
-
-**Cause**: Insufficient system memory
-
-**Solution**:
-```r
-# Use smaller context size
-ctx <- context_create(model, n_ctx = 1024)  # Reduce to 1024
-
-# Close other programs to free memory
-# Or use memory-friendly configuration for GGUF models
-model <- model_load("model.gguf", n_gpu_layers = 0)
-```
-
-### Debugging Tips
+By default, the package downloads a small, fast model. You can use different models:
 
 ```r
-# Enable verbose logging
-options(newrllama.verbose = TRUE)
+# Use a specific model (will download automatically)
+response <- quick_llama("Explain quantum physics", 
+                       model = "https://huggingface.co/microsoft/model.gguf")
 
-# Check system information
-Sys.info()
-
-# Check memory usage
-memory.size()  # Windows
-object.size(model)  # Check model size
+# Use a local model file you've already downloaded
+response <- quick_llama("Hello", model = "/path/to/your/model.gguf")
 ```
 
-### Getting Help
+Larger models give better responses but need more memory and are slower.
 
-1. **Documentation**: `?quick_llama`
-2. **Report Issues**: [GitHub Issues](https://github.com/xu2009/newrllama4-project/issues)
-3. **Community Discussion**: [GitHub Discussions](https://github.com/xu2009/newrllama4-project/discussions)
+### Max Tokens
 
----
-
-## Recommended Models
-
-### Model Selection by Use Case
-
-| Use Case | Recommended Model | Size | Features |
-|----------|-------------------|------|----------|
-| **Quick Testing** | Llama-3.2-1B-Instruct | ~1GB | Fast, basic functionality |
-| **General Conversation** | Llama-3.2-3B-Instruct | ~2GB | Balanced performance |
-| **Professional Tasks** | Llama-3.1-8B-Instruct | ~5GB | High-quality responses |
-| **Code Generation** | CodeLlama-7B-Instruct | ~4GB | Programming-focused |
-
-### Performance vs Quality Trade-offs
+Tokens are like words or parts of words. You can control how long the response is:
 
 ```r
-# Quick prototyping - prioritize speed with smaller GGUF models
-quick_model <- model_load("https://huggingface.co/.../Llama-3.2-1B-Instruct-Q4_K_M.gguf")
+# Short response (about 50 words)
+short <- quick_llama("Explain AI", max_tokens = 50)
 
-# Production environment - prioritize quality with larger GGUF models
-production_model <- model_load("https://huggingface.co/.../Llama-3.1-8B-Instruct-Q4_K_M.gguf")
-
-# Offline usage - local GGUF files for complete privacy
-local_model <- model_load("/path/to/your/model.gguf")
+# Longer response (about 200 words)  
+long <- quick_llama("Explain AI", max_tokens = 200)
 ```
 
-### Multilingual Support
+More tokens = longer responses, but also slower generation.
+
+### Context Window (`n_ctx`)
+
+The context window is how much text the model can "remember" at once:
 
 ```r
-# English language examples
-english_response <- quick_llama("What is machine learning?")
+# For short conversations
+quick_llama("Hello", n_ctx = 1024)
 
-# Processing multiple languages
-multilingual <- quick_llama(c(
-  "Explain AI in English",
-  "Expliquer l'IA en français", 
-  "Explicar la IA en español"
-))
+# For longer conversations with more history
+quick_llama("Hello", n_ctx = 4096)
 ```
 
----
+Larger context windows let you have longer conversations but use more memory.
 
-## Architecture Design
+### GPU Usage
 
-newrllama4 uses an innovative four-layer architecture built on llama.cpp that balances ease of use with performance:
-
-```
-┌─────────────────────────────────────┐
-│    High-level R Interface           │  ← Direct user interaction
-│         (quick_llama)               │
-├─────────────────────────────────────┤
-│   Intermediate API                  │  ← Advanced users
-│  (model_load, generate)             │
-├─────────────────────────────────────┤
-│    R/C++ Bridge Layer               │  ← Data conversion
-│      (Rcpp Interface)               │
-├─────────────────────────────────────┤
-│     llama.cpp Backend               │  ← Core computation engine
-│    (C++ Inference Engine)           │    (Local, Private)
-└─────────────────────────────────────┘
-```
-
-### Design Rationale
-
-- **Local Privacy**: All computation runs locally using llama.cpp - no data leaves your machine
-- **Ease of Use**: `quick_llama()` enables single-line usage with GGUF models
-- **Performance**: llama.cpp C++ backend ensures maximum efficiency for local inference
-- **Lightweight**: Runtime downloads avoid large package sizes
-- **Open Source**: Works with any GGUF format model from Hugging Face and other sources
-
----
-
-## Advanced Topics
-
-### Custom Model Usage
-
-While this package is primarily for inference, you can use any trained GGUF format model from various sources:
+If you have a graphics card, you can make generation much faster:
 
 ```r
-# Load your own fine-tuned GGUF model
-custom_model <- model_load("/path/to/your/fine-tuned-model.gguf")
+# Use your graphics card for faster generation
+quick_llama("Tell me a joke", n_gpu_layers = -1)
 
-# Load GGUF models from Hugging Face
-hf_model <- model_load("hf://your-username/your-model/model.gguf")
-
-# All models must be in GGUF format for compatibility with llama.cpp backend
+# Use only your CPU (slower but works everywhere)
+quick_llama("Tell me a joke", n_gpu_layers = 0)
 ```
 
-### Batch Processing Best Practices
+GPU acceleration can be 5-10 times faster than CPU-only processing.
+
+### Other Parameters
+
+There are many other options you can explore:
 
 ```r
-# Efficient batch processing
-process_batch <- function(prompts, batch_size = 10) {
-  results <- list()
-  
-  for (i in seq(1, length(prompts), batch_size)) {
-    batch <- prompts[i:min(i + batch_size - 1, length(prompts))]
-    batch_results <- quick_llama(batch)
-    results <- c(results, batch_results)
-    
-    # Progress indicator
-    message("Progress: ", min(i + batch_size - 1, length(prompts)), "/", length(prompts))
-  }
-  
-  return(results)
-}
-```
+# See all available options
+?quick_llama
 
-### Integration with Other R Packages
-
-```r
-# Integration with ggplot2 - AI-assisted visualization
-library(ggplot2)
-
-plot_suggestion <- quick_llama(
-  "Based on the iris dataset, suggest a meaningful visualization approach and return ggplot2 code"
-)
-
-# Integration with dplyr - data processing recommendations
-library(dplyr)
-
-data_analysis <- quick_llama(
-  "Provide dplyr pipeline steps for sales data analysis"
+# Example with multiple custom settings
+response <- quick_llama(
+  "Write a poem about data science",
+  temperature = 0.8,      # Creative
+  max_tokens = 150,       # Medium length
+  top_p = 0.9,           # Sampling method
+  seed = 42              # Reproducible results
 )
 ```
 
----
-
-## Community and Contributing
-
-### How to Contribute
-
-We welcome all forms of contribution!
-
-- **Bug Reports**: [Submit Issue](https://github.com/xu2009/newrllama4-project/issues/new?template=bug_report.md)
-- **Feature Requests**: [Request Feature](https://github.com/xu2009/newrllama4-project/issues/new?template=feature_request.md)
-- **Documentation**: Submit PR to improve README and documentation
-- **Code Contributions**: Fork the project and submit Pull Requests
-
-### Development Environment Setup
-
-```r
-# Install development version from GitHub
-devtools::install_github("xu2009/newrllama4-project", 
-                         subdir = "newrllama4", 
-                         ref = "develop")
-
-# Or install stable version from CRAN
-install.packages("newrllama4")
-
-# Run tests
-devtools::test()
-
-# Build documentation
-devtools::document()
-```
-
-### Code of Conduct
-
-We are committed to creating a friendly and inclusive open-source community. Please read our [Code of Conduct](https://github.com/xu2009/newrllama4-project/blob/main/CODE_OF_CONDUCT.md).
+Try different combinations to see what works best for your specific use case.
 
 ---
 
-## Related Resources
+## Getting Help
 
-### Learning Resources
-
-- **R Programming**: [R for Data Science](https://r4ds.had.co.nz/)
-- **AI Fundamentals**: [Elements of AI](https://www.elementsofai.com/)
-- **Deep Learning**: [Deep Learning with R](https://www.manning.com/books/deep-learning-with-r)
-
-### Related Projects
-
-- **llama.cpp**: [Original C++ project](https://github.com/ggerganov/llama.cpp)
-- **Hugging Face**: [Model repository](https://huggingface.co/models)
-- **R Project**: [Official website](https://www.r-project.org/)
-
-### Technical Documentation
-
-- [Best Practices for Using LLMs in R](https://github.com/xu2009/newrllama4-project/wiki)
-- [Performance Tuning Guide](https://github.com/xu2009/newrllama4-project/wiki/Performance-Tuning)
+- **Function documentation**: Type `?quick_llama` in R for detailed help
+- **Report issues**: [GitHub Issues](https://github.com/xu2009/newrllama4-project/issues)
+- **Community discussion**: [GitHub Discussions](https://github.com/xu2009/newrllama4-project/discussions)
 
 ---
 
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
----
-
-## Support the Project
-
-If you find this project helpful, please consider:
-
-- ⭐ Starring the repository
-- 🐛 Reporting issues and suggestions
-- 📢 Recommending to colleagues and friends
-- 💝 [Becoming a sponsor](https://github.com/sponsors/xu2009)
-
----
-
-## Contact
-
-- **Email**: yaoshengleo@example.com
-- **GitHub**: [@xu2009](https://github.com/xu2009)
-- **Issues**: [GitHub Issues](https://github.com/xu2009/newrllama4-project/issues)
-
----
-
-<div align="center">
-
-**Making AI Simple and Powerful in R**
-
-[Quick Start](#quick-start) • [Documentation](https://github.com/xu2009/newrllama4-project/wiki) • [Report Issues](https://github.com/xu2009/newrllama4-project/issues)
-
-</div>

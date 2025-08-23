@@ -5,7 +5,7 @@ library(newrllama4)
 
 cat("Testing verbosity levels with model loading...\n")
 
-model_path <- "/Users/yaoshengleo/Downloads/gemma-3-12b-it-q4_0.gguf"
+model_path <- "/Users/yaoshengleo/Desktop/gguf模型/gemma-3-12b-it-q4_0.gguf"
 
 if (!file.exists(model_path)) {
   cat("Model file not found at:", model_path, "\n")

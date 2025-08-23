@@ -363,12 +363,37 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate(newrllama_context_handle c
         llama_sampler_accept(sampler_chain, new_token); 
         
         // 🔧 修复：先检查EOG token，如果是停止标记直接退出，不添加到输出
-        if (new_token == eos_token || llama_vocab_is_eog(vocab, new_token)) {
-            break; // 停止生成，EOG tokens不会被添加到输出
+        // 1. 检查标准EOS token
+        if (new_token == eos_token) {
+            break;
         }
         
-        // 只有非停止token才转换并添加到输出
+        // 2. 检查llama.cpp内置的EOG检测
+        if (llama_vocab_is_eog(vocab, new_token)) {
+            break;
+        }
+        
+        // 3. 特别检查Llama-3.2的常见EOG token IDs（基于诊断脚本的发现）
+        // 这些是从tokenize测试中发现的常见EOG token的实际ID
+        if (new_token == 128001 ||  // <|eot_id|> 的开始部分
+            new_token == 128006 ||  // <|start_header_id|> 的开始部分  
+            new_token == 128007 ||  // <|end_header_id|> 的开始部分
+            new_token == 128009) {  // <|assistant|> 的开始部分
+            break;
+        }
+        
+        // 4. 通过token字符串检查（性能较低，但更准确）
         const std::string token_str = common_token_to_piece(ctx, new_token);
+        if (token_str.find("<|eot_id|>") != std::string::npos ||
+            token_str.find("<|end_header_id|>") != std::string::npos ||
+            token_str.find("<|start_header_id|>") != std::string::npos ||
+            token_str.find("<|assistant|>") != std::string::npos ||
+            token_str.find("<|user|>") != std::string::npos ||
+            token_str.find("<|system|>") != std::string::npos) {
+            break; // 停止生成，不添加到输出
+        }
+        
+        // 只有非停止token才添加到输出（token_str已经转换过了）
         generated_text += token_str;
         
         llama_batch next_batch = llama_batch_get_one(&new_token, 1); 
