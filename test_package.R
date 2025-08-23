@@ -3,7 +3,7 @@ library(newrllama4)
 # ===================================================================
 # 基础模型加载（这部分保持不变）
 # ===================================================================
-model <- model_load("/Users/yaoshengleo/Downloads/gemma-3-12b-it-q4_0.gguf", n_gpu_layers = "auto", verbosity = 3)
+model <- model_load("/Users/yaoshengleo/Downloads/gemma-3-12b-it-q4_0.gguf", n_gpu_layers = 100, verbosity = 3)
 ctx <- context_create(model, n_ctx = 4096, n_seq_max = 64, verbosity = 2)
 
 # ===================================================================
@@ -31,6 +31,8 @@ formatted_prompt
 tokens <- tokenize(model, formatted_prompt)
 result_1 <- generate(ctx, tokens, max_tokens = 200)
 result_1
+
+cat(result_1)
 
 # ===================================================================
 # 3. 另一个使用自动template的例子
@@ -61,7 +63,7 @@ rm(model, ctx)  # 清理资源
 
 quick_llama_reset()
 result <- quick_llama("Tell me a joke.",
-                      n_gpu_layers = "auto",
+                      n_gpu_layers = 100,
                       max_tokens = 200,
                       verbosity = 1)
 result
