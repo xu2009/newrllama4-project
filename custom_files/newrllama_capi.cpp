@@ -358,87 +358,19 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate(newrllama_context_handle c
     llama_sampler_chain_add(sampler_chain, llama_sampler_init_dist(final_seed)); 
     
     std::string generated_text; 
-    std::vector<llama_token> recent_tokens; // 在函数内维护token历史
     for (int i = 0; i < max_tokens; ++i) { 
         llama_token new_token = llama_sampler_sample(sampler_chain, ctx, -1); 
         llama_sampler_accept(sampler_chain, new_token); 
         
-        // 🔧 修复：先检查EOG token，如果是停止标记直接退出，不添加到输出
-        // 1. 检查标准EOS token
-        if (new_token == eos_token) {
-            break;
-        }
+        // 🔧 修复：采用官方预检测策略 - 在添加到输出前检测EOG
+        // 参考：examples/simple/simple.cpp 的标准实现
         
-        // 2. 检查llama.cpp内置的EOG检测
+        // 检查是否为EOG token（包括EOS）
         if (llama_vocab_is_eog(vocab, new_token)) {
-            break;
+            break; // 直接停止生成，不添加到输出
         }
         
-        // 3. 检测Llama-3.2 EOG序列：基于诊断脚本发现的正确token序列
-        // <|eot_id|> = [27, 91, 68, 354, 851, 91, 29]
-        // <|end_header_id|> = [27, 91, 408, 8932, 851, 91, 29]
-        // <|start_header_id|> = [27, 91, 2527, 8932, 851, 91, 29]
-        
-        // 维护token历史用于序列检测
-        recent_tokens.push_back(new_token);
-        if (recent_tokens.size() > 7) {  // 最长序列是7个tokens
-            recent_tokens.erase(recent_tokens.begin());
-        }
-        
-        // 检测 <|eot_id|> 序列 [27, 91, 68, 354, 851, 91, 29]
-        if (recent_tokens.size() >= 7) {
-            bool is_eot_id = true;
-            std::vector<llama_token> eot_sequence = {27, 91, 68, 354, 851, 91, 29};
-            for (size_t j = 0; j < 7; ++j) {
-                if (recent_tokens[recent_tokens.size() - 7 + j] != eot_sequence[j]) {
-                    is_eot_id = false;
-                    break;
-                }
-            }
-            if (is_eot_id) {
-                // 移除已添加的EOG序列tokens
-                if (generated_text.length() >= 7) {  // 安全检查
-                    // 重新解码最近7个tokens确保准确移除
-                    std::string tokens_to_remove;
-                    for (llama_token tok : eot_sequence) {
-                        tokens_to_remove += common_token_to_piece(ctx, tok);
-                    }
-                    if (generated_text.length() >= tokens_to_remove.length() && 
-                        generated_text.substr(generated_text.length() - tokens_to_remove.length()) == tokens_to_remove) {
-                        generated_text.erase(generated_text.length() - tokens_to_remove.length());
-                    }
-                }
-                break;
-            }
-        }
-        
-        // 检测 <|end_header_id|> 序列 [27, 91, 408, 8932, 851, 91, 29]  
-        if (recent_tokens.size() >= 7) {
-            bool is_end_header = true;
-            std::vector<llama_token> end_header_sequence = {27, 91, 408, 8932, 851, 91, 29};
-            for (size_t j = 0; j < 7; ++j) {
-                if (recent_tokens[recent_tokens.size() - 7 + j] != end_header_sequence[j]) {
-                    is_end_header = false;
-                    break;
-                }
-            }
-            if (is_end_header) {
-                // 移除已添加的EOG序列tokens
-                if (generated_text.length() >= 7) {  // 安全检查
-                    std::string tokens_to_remove;
-                    for (llama_token tok : end_header_sequence) {
-                        tokens_to_remove += common_token_to_piece(ctx, tok);
-                    }
-                    if (generated_text.length() >= tokens_to_remove.length() && 
-                        generated_text.substr(generated_text.length() - tokens_to_remove.length()) == tokens_to_remove) {
-                        generated_text.erase(generated_text.length() - tokens_to_remove.length());
-                    }
-                }
-                break;
-            }
-        }
-        
-        // 添加token到输出
+        // 只有非EOG token才添加到输出
         const std::string token_str = common_token_to_piece(ctx, new_token);
         generated_text += token_str;
         
