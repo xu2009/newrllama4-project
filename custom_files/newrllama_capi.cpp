@@ -358,16 +358,75 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate(newrllama_context_handle c
     llama_sampler_chain_add(sampler_chain, llama_sampler_init_dist(final_seed)); 
     
     std::string generated_text; 
+    std::vector<llama_token> recent_tokens; // 维护token历史用于序列检测
+    
     for (int i = 0; i < max_tokens; ++i) { 
         llama_token new_token = llama_sampler_sample(sampler_chain, ctx, -1); 
         llama_sampler_accept(sampler_chain, new_token); 
         
-        // 🔧 修复：采用官方预检测策略 - 在添加到输出前检测EOG
-        // 参考：examples/simple/simple.cpp 的标准实现
+        // 🔧 修复：结合标准EOG检测 + multi-token序列检测
         
-        // 检查是否为EOG token（包括EOS）
+        // 1. 标准单token EOG检测（保留官方逻辑）
         if (llama_vocab_is_eog(vocab, new_token)) {
             break; // 直接停止生成，不添加到输出
+        }
+        
+        // 2. Multi-token EOG序列检测（基于诊断脚本的准确token序列）
+        recent_tokens.push_back(new_token);
+        if (recent_tokens.size() > 7) {  // 保持最近7个tokens的窗口
+            recent_tokens.erase(recent_tokens.begin());
+        }
+        
+        // 检测完整的EOG序列，在它们完整形成时停止（预检测）
+        if (recent_tokens.size() >= 7) {
+            // <|eot_id|> 序列: [27, 91, 68, 354, 851, 91, 29]
+            std::vector<llama_token> eot_sequence = {27, 91, 68, 354, 851, 91, 29};
+            bool is_eot_complete = true;
+            for (size_t j = 0; j < 7; ++j) {
+                if (recent_tokens[recent_tokens.size() - 7 + j] != eot_sequence[j]) {
+                    is_eot_complete = false;
+                    break;
+                }
+            }
+            
+            if (is_eot_complete) {
+                // 序列已完成，移除已添加的前6个tokens并停止
+                std::string tokens_to_remove;
+                for (size_t k = 0; k < 6; ++k) { // 移除前6个tokens
+                    llama_token tok = recent_tokens[recent_tokens.size() - 7 + k];
+                    tokens_to_remove += common_token_to_piece(ctx, tok);
+                }
+                // 安全移除
+                if (generated_text.length() >= tokens_to_remove.length() && 
+                    generated_text.substr(generated_text.length() - tokens_to_remove.length()) == tokens_to_remove) {
+                    generated_text.erase(generated_text.length() - tokens_to_remove.length());
+                }
+                break; // 停止生成，不添加第7个token
+            }
+            
+            // <|end_header_id|> 序列: [27, 91, 408, 8932, 851, 91, 29]  
+            std::vector<llama_token> end_header_sequence = {27, 91, 408, 8932, 851, 91, 29};
+            bool is_end_header_complete = true;
+            for (size_t j = 0; j < 7; ++j) {
+                if (recent_tokens[recent_tokens.size() - 7 + j] != end_header_sequence[j]) {
+                    is_end_header_complete = false;
+                    break;
+                }
+            }
+            
+            if (is_end_header_complete) {
+                // 序列已完成，移除已添加的前6个tokens并停止  
+                std::string tokens_to_remove;
+                for (size_t k = 0; k < 6; ++k) {
+                    llama_token tok = recent_tokens[recent_tokens.size() - 7 + k];
+                    tokens_to_remove += common_token_to_piece(ctx, tok);
+                }
+                if (generated_text.length() >= tokens_to_remove.length() && 
+                    generated_text.substr(generated_text.length() - tokens_to_remove.length()) == tokens_to_remove) {
+                    generated_text.erase(generated_text.length() - tokens_to_remove.length());
+                }
+                break; // 停止生成
+            }
         }
         
         // 只有非EOG token才添加到输出
