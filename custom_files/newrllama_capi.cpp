@@ -615,6 +615,14 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
         slot.error_msg.clear();
     };
 
+    common_params_sampling sparams{};
+    sparams.top_k = params->top_k;
+    sparams.top_p = params->top_p;
+    sparams.temp = params->temperature;
+    sparams.penalty_last_n = params->repeat_last_n;
+    sparams.penalty_repeat = params->penalty_repeat;
+    sparams.seed = (params->seed < 0) ? time(nullptr) : params->seed;
+
     auto decode_prompt_tokens = [&](Slot& slot) -> bool {
         if (slot.n_prompt <= 0) {
             slot.failed = true;
@@ -668,15 +676,6 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
         llama_batch_free(batch);
         return true;
     };
-
-    // 配置采样参数
-    common_params_sampling sparams{};
-    sparams.top_k = params->top_k;
-    sparams.top_p = params->top_p;
-    sparams.temp = params->temperature;
-    sparams.penalty_last_n = params->repeat_last_n;
-    sparams.penalty_repeat = params->penalty_repeat;
-    sparams.seed = (params->seed < 0) ? time(nullptr) : params->seed;
 
     std::vector<Slot> slots(seq_capacity);
     size_t next_prompt_idx = 0;
