@@ -5,7 +5,7 @@ library(newrllama4)
 # Load data
 data <- textdata::dataset_ag_news()
 
-# Randomly sample 25 from each class (100 total observations)
+# Randomly sample 5 from each class (20 total observations)
 set.seed(123)
 data_sample <- data %>%
   group_by(class) %>%
@@ -22,10 +22,8 @@ model <- model_load(
   verbosity = 1
 )
 
-# 2. Create a reusable context with adequate capacity for our 100 prompts
-# Set n_seq_max to 120 to comfortably handle 100 prompts without batch processing
-# Increase n_ctx to ensure each sequence has enough context space
-ctx <- context_create(model, n_ctx = 10000, n_seq_max = 20)
+# 2. Create a reusable context that can handle all 20 prompts without batch processing
+ctx <- context_create(model, n_ctx = 4096, n_seq_max = 24)
 
 # 3. Prepare all prompts at once
 cat("Preparing all prompts for parallel processing...\n")
