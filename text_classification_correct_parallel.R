@@ -17,13 +17,13 @@ cat("Dataset created with", nrow(data_sample), "observations\n")
 
 # 1. Load the model once
 model <- model_load(
-  model_path = "/Users/yaoshengleo/Desktop/gguf模型/gemma-3-12b-it-q4_0.gguf", 
-  n_gpu_layers = 50, 
+  model_path = "/Users/yaoshengleo/Desktop/gguf模型/gemma-3-12b-it-q4_0.gguf",
+  n_gpu_layers = 30,
   verbosity = 1
 )
 
-# 2. Create a reusable context that can handle all 20 prompts without batch processing
-ctx <- context_create(model, n_ctx = 4096, n_seq_max = 24)
+# 2. Create a reusable context with n_seq_max smaller than prompt count (testing batch processing)
+ctx <- context_create(model, n_ctx = 4000, n_seq_max = 10)
 
 # 3. Prepare all prompts at once
 cat("Preparing all prompts for parallel processing...\n")
@@ -36,7 +36,7 @@ for (i in 1:nrow(data_sample)) {
     list(role = "user", content = paste0(
       "Classify this news article into exactly one category: World, Sports, Business, or Sci/Tech. Respond with only the category name.\n\n",
       "Title: ", data_sample$title[i], "\n",
-      "Description: ", substr(data_sample$description[i], 1, 200), "\n\n",
+      "Description: ", substr(data_sample$description[i], 1, 100), "\n\n",
       "Category:"
     ))
   )
@@ -57,12 +57,12 @@ tryCatch({
   results <- generate_parallel(
     context = ctx,
     prompts = all_prompts,
-    max_tokens = 5L,
+    max_tokens = 3L,
     temperature = 0.1,
-    top_k = 40L,
-    top_p = 0.9,
-    repeat_last_n = 64L,
-    penalty_repeat = 1.1,
+    top_k = 20L,
+    top_p = 0.95,
+    repeat_last_n = 32L,
+    penalty_repeat = 1.05,
     seed = 1234L
   )
 

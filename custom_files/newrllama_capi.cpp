@@ -680,6 +680,8 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
     std::vector<Slot> slots(seq_capacity);
     size_t next_prompt_idx = 0;
     int active_clients = 0;
+    std::vector<int> slots_pending_reassign;
+    slots_pending_reassign.reserve(seq_capacity);
 
     auto finalize_slot = [&](int slot_idx, bool success) {
         Slot& slot = slots[slot_idx];
@@ -701,7 +703,11 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
 
         slot.active = false;
         active_clients--;
+        bool needs_reassign = next_prompt_idx < (size_t)n_prompts;
         release_slot(slot);
+        if (needs_reassign) {
+            slots_pending_reassign.push_back(slot_idx);
+        }
     };
 
     auto assign_next_prompt = [&](int slot_idx) -> bool {
@@ -878,7 +884,6 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
 
                         if (should_stop) {
                             finalize_slot(slot_idx, true);
-                            assign_next_prompt(slot_idx);
                         }
 
                     } catch (const std::exception& e) {
@@ -887,7 +892,6 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
                         err_slot.error_msg = std::string("Sampling failed: ") + e.what();
                         err_slot.i_batch = -1;
                         finalize_slot(slot_idx, false);
-                        assign_next_prompt(slot_idx);
                     }
                 }
 
@@ -895,6 +899,13 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
             }
 
             llama_batch_free(gen_batch);
+
+            if (!slots_pending_reassign.empty()) {
+                for (int slot_idx : slots_pending_reassign) {
+                    assign_next_prompt(slot_idx);
+                }
+                slots_pending_reassign.clear();
+            }
 
             if (!decode_success) {
                 throw std::runtime_error("Fatal decode error during generation batch");
