@@ -334,7 +334,7 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate(newrllama_context_handle c
     } 
     
     // 🔧 修复：清除KV缓存确保可重复性
-    llama_kv_cache_clear(ctx);
+    llama_kv_self_clear(ctx);
     
     const llama_model* model = llama_get_model(ctx); 
     const struct llama_vocab* vocab = llama_model_get_vocab(model); 
@@ -668,6 +668,15 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
         llama_batch_free(batch);
         return true;
     };
+
+    // 配置采样参数
+    common_params_sampling sparams{};
+    sparams.top_k = params->top_k;
+    sparams.top_p = params->top_p;
+    sparams.temp = params->temperature;
+    sparams.penalty_last_n = params->repeat_last_n;
+    sparams.penalty_repeat = params->penalty_repeat;
+    sparams.seed = (params->seed < 0) ? time(nullptr) : params->seed;
 
     std::vector<Slot> slots(seq_capacity);
     size_t next_prompt_idx = 0;
