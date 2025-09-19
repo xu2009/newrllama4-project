@@ -62,7 +62,7 @@ cat(result_2)
 rm(model, ctx)  # 清理资源
 
 quick_llama_reset()
-result <- quick_llama("Tell me a joke.",
+result <- quick_llama("Tell me a joke and explain it.",
                       n_gpu_layers = 100,
                       max_tokens = 200,
                       verbosity = 1)
