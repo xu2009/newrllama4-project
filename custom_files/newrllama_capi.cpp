@@ -447,440 +447,486 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate(newrllama_context_handle c
 }
 
 NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
-    newrllama_context_handle ctx, 
-    const char** prompts, 
-    int n_prompts, 
-    const struct newrllama_parallel_params* params, 
-    char*** results_out, 
+    newrllama_context_handle ctx,
+    const char** prompts,
+    int n_prompts,
+    const struct newrllama_parallel_params* params,
+    char*** results_out,
     const char** error_message) {
-    
-    // =============================================================================
-    // Phase 1: 参数验证和初始化
-    // =============================================================================
-    
-    if (!ctx || !params || !prompts || !results_out || n_prompts <= 0) {
+
+    if (!ctx || !prompts || !params || !results_out || n_prompts <= 0) {
         set_error(error_message, "Invalid parameters: null pointers or invalid prompt count");
         return NEWRLLAMA_ERROR;
     }
-    
+
     const llama_model* model = llama_get_model(ctx);
     const llama_vocab* vocab = llama_model_get_vocab(model);
     const llama_token eos_token = llama_vocab_eos(vocab);
     const int n_ctx = llama_n_ctx(ctx);
-    
-    // 性能统计
+    const int seq_cap_raw = (int)llama_n_seq_max(ctx);
+    const int seq_capacity = std::max(1, seq_cap_raw > 0 ? seq_cap_raw : 1);
+    const int32_t batch_cap_init = std::max<int32_t>(1, std::min<int32_t>(512, (int32_t)llama_n_batch(ctx)));
+
     const auto t_start = ggml_time_us();
-    int32_t n_cache_miss = 0;
     int32_t n_total_prompt = 0;
     int32_t n_total_gen = 0;
-    
-    // 客户端结构体 - 增强版
-    struct EnhancedClient {
-        int id;
-        llama_seq_id seq_id;
-        std::vector<llama_token> prompt_tokens;
+    int32_t dynamic_cache_miss = 0;
+
+    std::vector<std::string> final_responses(n_prompts);
+
+    // 预先分词，寻找公共前缀
+    std::vector<std::vector<llama_token>> prompt_tokens_all(n_prompts);
+    size_t shared_prefix_len = 0;
+    for (int i = 0; i < n_prompts; ++i) {
+        prompt_tokens_all[i] = helper_tokenize(model, std::string(prompts[i]), true);
+        if (i == 0) {
+            shared_prefix_len = prompt_tokens_all[i].size();
+        } else {
+            size_t common = 0;
+            size_t limit = std::min(shared_prefix_len, prompt_tokens_all[i].size());
+            while (common < limit && prompt_tokens_all[i][common] == prompt_tokens_all[0][common]) {
+                ++common;
+            }
+            shared_prefix_len = common;
+        }
+    }
+
+    llama_kv_self_clear(ctx);
+    bool prefix_ready = false;
+    std::vector<llama_token> shared_prefix_tokens;
+    if (shared_prefix_len > 0) {
+        shared_prefix_tokens.assign(prompt_tokens_all[0].begin(), prompt_tokens_all[0].begin() + shared_prefix_len);
+        llama_batch prefix_batch = llama_batch_init(shared_prefix_tokens.size(), 0, 1);
+        for (size_t j = 0; j < shared_prefix_tokens.size(); ++j) {
+            common_batch_add(prefix_batch, shared_prefix_tokens[j], j, {0}, j == shared_prefix_tokens.size() - 1);
+        }
+
+        int32_t local_cap = batch_cap_init;
+        bool prefix_ok = true;
+        for (int32_t start = 0; start < (int32_t)prefix_batch.n_tokens; ) {
+            int32_t n_tokens = std::min(local_cap, (int32_t)(prefix_batch.n_tokens - start));
+            llama_batch view = {
+                n_tokens,
+                prefix_batch.token + start,
+                nullptr,
+                prefix_batch.pos + start,
+                prefix_batch.n_seq_id + start,
+                prefix_batch.seq_id + start,
+                prefix_batch.logits + start,
+            };
+
+            int ret = llama_decode(ctx, view);
+            if (ret != 0) {
+                if (ret > 0 && local_cap > 1) {
+                    local_cap = std::max<int32_t>(1, local_cap / 2);
+                    dynamic_cache_miss++;
+                    continue;
+                }
+                prefix_ok = false;
+                break;
+            }
+            start += n_tokens;
+        }
+        llama_batch_free(prefix_batch);
+
+        if (!prefix_ok) {
+            llama_kv_self_clear(ctx);
+        } else {
+            prefix_ready = true;
+        }
+    }
+
+    struct Slot {
+        bool active = false;
+        bool finished = false;
+        bool failed = false;
+        llama_seq_id seq_id = 0;
+        int global_index = -1;
+        const std::vector<llama_token>* full_tokens = nullptr;
+        std::vector<llama_token> suffix_tokens;
+        int32_t prefix_len = 0;
         int32_t n_past = 0;
         int32_t n_prompt = 0;
         int32_t n_decoded = 0;
         int32_t i_batch = -1;
-        std::string input;
-        std::string response;
         llama_token sampled = 0;
         common_sampler* smpl = nullptr;
-        bool finished = false;
-        bool failed = false;
+        std::string response;
         std::string error_msg;
-        int64_t t_start_prompt = 0;
-        int64_t t_start_gen = 0;
-        
-        ~EnhancedClient() {
-            if (smpl) {
-                common_sampler_free(smpl);
-                smpl = nullptr;
+    };
+
+    auto clean_response_text = [](std::string text) {
+        const std::vector<std::string> stop_markers = {
+            "<|im_end|>", "<|im_start|>", "<end_of_turn>", "<start_of_turn>",
+            "</s>", "<s>", "<|endoftext|>", "<|end|>", "<|start|>",
+            "<eos>", "<bos>", "\n<|im_end|>", "\n<end_of_turn>", "\n</s>"
+        };
+
+        bool found_marker = true;
+        int cleanup_rounds = 0;
+        while (found_marker && cleanup_rounds < 5) {
+            found_marker = false;
+            cleanup_rounds++;
+            for (const auto& marker : stop_markers) {
+                size_t pos = 0;
+                while ((pos = text.find(marker, pos)) != std::string::npos) {
+                    text.erase(pos, marker.length());
+                    found_marker = true;
+                }
+            }
+        }
+
+        while (!text.empty() && (text.front() == '?' || text.front() < 32 || text.front() > 126)) {
+            text = text.substr(1);
+        }
+        while (!text.empty() && isspace(text.back())) {
+            text.pop_back();
+        }
+        while (!text.empty() && isspace(text.front())) {
+            text = text.substr(1);
+        }
+
+        size_t pos = text.find("\n\nUser:");
+        if (pos != std::string::npos) {
+            text = text.substr(0, pos);
+        }
+        return text;
+    };
+
+    auto release_slot = [](Slot& slot) {
+        if (slot.smpl) {
+            common_sampler_free(slot.smpl);
+            slot.smpl = nullptr;
+        }
+        slot.active = false;
+        slot.finished = false;
+        slot.failed = false;
+        slot.seq_id = 0;
+        slot.global_index = -1;
+        slot.full_tokens = nullptr;
+        slot.suffix_tokens.clear();
+        slot.prefix_len = 0;
+        slot.n_past = 0;
+        slot.n_prompt = 0;
+        slot.n_decoded = 0;
+        slot.i_batch = -1;
+        slot.sampled = 0;
+        slot.response.clear();
+        slot.error_msg.clear();
+    };
+
+    auto decode_prompt_tokens = [&](Slot& slot) -> bool {
+        if (slot.n_prompt <= 0) {
+            slot.failed = true;
+            slot.error_msg = "Prompt resulted in zero tokens";
+            return false;
+        }
+
+        if (slot.suffix_tokens.empty()) {
+            slot.n_past = slot.n_prompt;
+            return true;
+        }
+
+        llama_batch batch = llama_batch_init(slot.suffix_tokens.size(), 0, 1);
+        for (size_t j = 0; j < slot.suffix_tokens.size(); ++j) {
+            const int position = slot.prefix_len + static_cast<int>(j);
+            common_batch_add(batch, slot.suffix_tokens[j], position, {slot.seq_id}, j == slot.suffix_tokens.size() - 1);
+        }
+
+        int32_t local_cap = batch_cap_init;
+        for (int32_t start = 0; start < (int32_t)batch.n_tokens;) {
+            int32_t n_tokens = std::min(local_cap, (int32_t)(batch.n_tokens - start));
+            llama_batch view = {
+                n_tokens,
+                batch.token + start,
+                nullptr,
+                batch.pos + start,
+                batch.n_seq_id + start,
+                batch.seq_id + start,
+                batch.logits + start,
+            };
+
+            int ret = llama_decode(ctx, view);
+            if (ret == 0) {
+                start += n_tokens;
+                continue;
+            }
+
+            if (ret > 0 && local_cap > 1) {
+                local_cap = std::max<int32_t>(1, local_cap / 2);
+                dynamic_cache_miss++;
+                continue;
+            }
+
+            llama_batch_free(batch);
+            slot.failed = true;
+            slot.error_msg = "Failed to decode prompt tokens";
+            return false;
+        }
+
+        slot.n_past = slot.n_prompt;
+        llama_batch_free(batch);
+        return true;
+    };
+
+    std::vector<Slot> slots(seq_capacity);
+    size_t next_prompt_idx = 0;
+    llama_seq_id next_seq_id = prefix_ready ? 1 : 1;
+    int active_clients = 0;
+
+    auto finalize_slot = [&](int slot_idx, bool success) {
+        Slot& slot = slots[slot_idx];
+        if (!slot.active) {
+            release_slot(slot);
+            return;
+        }
+
+        if (slot.seq_id > 0) {
+            llama_kv_self_seq_rm(ctx, slot.seq_id, 0, -1);
+        }
+
+        if (success) {
+            final_responses[slot.global_index] = clean_response_text(slot.response);
+            n_total_gen += slot.n_decoded;
+        } else {
+            final_responses[slot.global_index] = "[ERROR] " + (slot.error_msg.empty() ? std::string("Unknown error") : slot.error_msg);
+        }
+
+        slot.active = false;
+        active_clients--;
+        release_slot(slot);
+    };
+
+    auto assign_next_prompt = [&](int slot_idx) -> bool {
+        Slot& slot = slots[slot_idx];
+        release_slot(slot);
+
+        while (next_prompt_idx < (size_t)n_prompts) {
+            const size_t global_idx = next_prompt_idx++;
+            slot.seq_id = next_seq_id++;
+            slot.global_index = static_cast<int>(global_idx);
+            slot.full_tokens = &prompt_tokens_all[global_idx];
+            slot.n_prompt = static_cast<int32_t>(slot.full_tokens->size());
+            slot.prefix_len = prefix_ready ? std::min<int32_t>((int32_t)shared_prefix_len, slot.n_prompt) : 0;
+            slot.suffix_tokens.clear();
+            if (slot.n_prompt > slot.prefix_len) {
+                slot.suffix_tokens.assign(slot.full_tokens->begin() + slot.prefix_len, slot.full_tokens->end());
+            }
+            slot.n_past = slot.prefix_len;
+            slot.n_decoded = 0;
+            slot.i_batch = -1;
+            slot.failed = false;
+            slot.response.clear();
+            slot.error_msg.clear();
+
+            slot.smpl = common_sampler_init(model, sparams);
+            if (!slot.smpl) {
+                slot.error_msg = "Failed to initialize sampler";
+                final_responses[slot.global_index] = "[ERROR] " + slot.error_msg;
+                release_slot(slot);
+                continue;
+            }
+
+            if (slot.n_prompt > n_ctx - 64) {
+                slot.error_msg = "Prompt too long for context size";
+                final_responses[slot.global_index] = "[ERROR] " + slot.error_msg;
+                release_slot(slot);
+                continue;
+            }
+
+            if (slot.n_prompt == 0) {
+                slot.error_msg = "Prompt resulted in zero tokens";
+                final_responses[slot.global_index] = "[ERROR] " + slot.error_msg;
+                release_slot(slot);
+                continue;
+            }
+
+            n_total_prompt += slot.n_prompt;
+
+            if (prefix_ready && slot.prefix_len > 0) {
+                llama_kv_self_seq_cp(ctx, 0, slot.seq_id, -1, -1);
+            }
+
+            if (!decode_prompt_tokens(slot)) {
+                if (slot.seq_id > 0) {
+                    llama_kv_self_seq_rm(ctx, slot.seq_id, 0, -1);
+                }
+                final_responses[slot.global_index] = "[ERROR] " + slot.error_msg;
+                release_slot(slot);
+                continue;
+            }
+
+            slot.sampled = slot.full_tokens->empty() ? 0 : slot.full_tokens->back();
+            slot.active = true;
+            active_clients++;
+            return true;
+        }
+
+        release_slot(slot);
+        return false;
+    };
+
+    auto ensure_slots_filled = [&]() {
+        for (int i = 0; i < seq_capacity && next_prompt_idx < (size_t)n_prompts; ++i) {
+            if (!slots[i].active) {
+                assign_next_prompt(i);
             }
         }
     };
-    
-    std::vector<EnhancedClient> clients(n_prompts);
-    
-    // =============================================================================
-    // Phase 2: 客户端初始化和令牌化
-    // =============================================================================
-    
+
     try {
-        // 配置采样参数
-        common_params_sampling sparams{};
-        sparams.top_k = params->top_k;
-        sparams.top_p = params->top_p;
-        sparams.temp = params->temperature;
-        sparams.penalty_last_n = params->repeat_last_n;
-        sparams.penalty_repeat = params->penalty_repeat;
-        sparams.seed = (params->seed < 0) ? time(nullptr) : params->seed;
-        
-        // 清空KV缓存 - 确保干净的开始
-        llama_kv_self_clear(ctx);
-        
-        // 初始化所有客户端
-        for (int i = 0; i < n_prompts; ++i) {
-            auto& client = clients[i];
-            client.id = i;
-            client.seq_id = i + 1;  // 序列ID从1开始，避免与系统序列冲突
-            client.input = std::string(prompts[i]);
-            client.t_start_prompt = ggml_time_us();
-            
-            // 为每个客户端创建独立的采样器
-            client.smpl = common_sampler_init(model, sparams);
-            if (!client.smpl) {
-                throw std::runtime_error("Failed to initialize sampler for client " + std::to_string(i));
-            }
-            
-            // 令牌化用户输入
-            client.prompt_tokens = helper_tokenize(model, client.input, true);
-            client.n_prompt = client.prompt_tokens.size();
-            n_total_prompt += client.n_prompt;
-            
-            // 验证提示符长度
-            if (client.n_prompt > n_ctx - 64) {  // 预留生成空间
-                client.failed = true;
-                client.error_msg = "Prompt too long for context size";
-                continue;
-            }
-        }
-        
-        // =============================================================================
-        // Phase 3: 统一批次处理所有提示符 - 关键改进
-        // =============================================================================
-        
-        // 计算最大批次大小
-        int max_batch_size = 0;
-        for (const auto& client : clients) {
-            if (!client.failed) {
-                max_batch_size += client.n_prompt;
-            }
-        }
-        
-        if (max_batch_size == 0) {
-            throw std::runtime_error("All clients failed during initialization");
-        }
-        
-        // 创建统一批次 - 一次性处理所有提示符
-        llama_batch batch = llama_batch_init(std::max(max_batch_size, n_ctx), 0, n_prompts);
-        
-        // 🔑 关键：所有客户端的提示符添加到同一批次，但使用独立的seq_id
-        for (auto& client : clients) {
-            if (client.failed) continue;
-            
-            for (size_t j = 0; j < client.prompt_tokens.size(); ++j) {
-                // 每个客户端使用独立的seq_id，确保完全隔离
-                common_batch_add(batch, 
-                               client.prompt_tokens[j], 
-                               j,                           // position in sequence
-                               {client.seq_id},            // 🔑 独立序列ID
-                               j == client.prompt_tokens.size() - 1);  // 只有最后一个token需要logits
-            }
-            client.n_past = client.n_prompt;
-        }
-        
-        // 分块处理批次 - 处理上下文限制
-        const int32_t n_batch_max = 512;  // 最大批次大小
-        for (int32_t i = 0; i < (int32_t)batch.n_tokens; i += n_batch_max) {
-            const int32_t n_tokens = std::min(n_batch_max, (int32_t)(batch.n_tokens - i));
-            
-            llama_batch batch_view = {
-                n_tokens,
-                batch.token + i,
-                nullptr,
-                batch.pos + i,
-                batch.n_seq_id + i,
-                batch.seq_id + i,
-                batch.logits + i,
-            };
-            
-            const int ret = llama_decode(ctx, batch_view);
-            if (ret != 0) {
-                llama_batch_free(batch);
-                
-                // 🛡️ 错误处理：如果统一批次失败，回退到独立处理
-                if (ret < 0) {
-                    throw std::runtime_error("Fatal decode error in prompt processing: " + std::to_string(ret));
-                }
-                
-                // 非致命错误，尝试分别处理每个客户端
-                for (auto& client : clients) {
-                    if (client.failed) continue;
-                    
-                    llama_batch individual_batch = llama_batch_init(client.n_prompt, 0, 1);
-                    
-                    for (size_t j = 0; j < client.prompt_tokens.size(); ++j) {
-                        common_batch_add(individual_batch, 
-                                       client.prompt_tokens[j], 
-                                       j, 
-                                       {client.seq_id}, 
-                                       j == client.prompt_tokens.size() - 1);
-                    }
-                    
-                    if (llama_decode(ctx, individual_batch) != 0) {
-                        client.failed = true;
-                        client.error_msg = "Failed to decode individual prompt";
-                    }
-                    
-                    llama_batch_free(individual_batch);
-                }
-                
-                n_cache_miss += 1;
-                break;
-            }
-        }
-        
-        if (batch.n_tokens > 0) {
-            llama_batch_free(batch);
-        }
-        
-        // =============================================================================
-        // Phase 4: 生成循环 - 统一批次但保持序列隔离
-        // =============================================================================
-        
-        int active_clients = 0;
-        for (const auto& client : clients) {
-            if (!client.failed) active_clients++;
-        }
-        
-        if (active_clients == 0) {
-            throw std::runtime_error("No clients remain active after prompt processing");
-        }
-        
-        // 生成循环
+        ensure_slots_filled();
+
         while (active_clients > 0) {
-            // 创建生成批次
+            ensure_slots_filled();
+
+            std::vector<int> batch_slots;
+            batch_slots.reserve(active_clients);
             llama_batch gen_batch = llama_batch_init(n_ctx, 0, active_clients);
-            std::vector<int> batch_to_client_map;
-            batch_to_client_map.reserve(active_clients);
-            
-            // 为每个活跃客户端添加待生成的token
-            for (auto& client : clients) {
-                if (client.finished || client.failed) continue;
-                
-                // 第一次生成时，从提示符的最后一个token开始
-                if (client.n_decoded == 0) {
-                    client.sampled = client.prompt_tokens.back();
-                    client.t_start_gen = ggml_time_us();
+
+            for (int i = 0; i < seq_capacity; ++i) {
+                Slot& slot = slots[i];
+                if (!slot.active || slot.failed) {
+                    continue;
                 }
-                
-                client.i_batch = gen_batch.n_tokens;
-                const int pos = client.n_past + client.n_decoded;
-                
-                // 🔑 关键：每个客户端使用独立的seq_id
-                common_batch_add(gen_batch, client.sampled, pos, {client.seq_id}, true);
-                batch_to_client_map.push_back(client.id);
+
+                if (slot.n_decoded == 0 && slot.full_tokens && !slot.full_tokens->empty()) {
+                    slot.sampled = slot.full_tokens->back();
+                }
+
+                slot.i_batch = gen_batch.n_tokens;
+                const int pos = slot.n_past + slot.n_decoded;
+                common_batch_add(gen_batch, slot.sampled, pos, {slot.seq_id}, true);
+                batch_slots.push_back(i);
             }
-            
+
             if (gen_batch.n_tokens == 0) {
                 llama_batch_free(gen_batch);
                 break;
             }
-            
-            // 分块处理生成批次
-            const int32_t n_batch_gen = std::min(n_batch_max, (int32_t)gen_batch.n_tokens);
-            for (int32_t i = 0; i < (int32_t)gen_batch.n_tokens; i += n_batch_gen) {
-                const int32_t n_tokens = std::min(n_batch_gen, (int32_t)(gen_batch.n_tokens - i));
-                
-                llama_batch batch_view = {
+
+            bool decode_success = true;
+            int32_t local_cap = batch_cap_init;
+            for (int32_t start = 0; start < (int32_t)gen_batch.n_tokens;) {
+                int32_t n_tokens = std::min(local_cap, (int32_t)(gen_batch.n_tokens - start));
+                llama_batch view = {
                     n_tokens,
-                    gen_batch.token + i,
+                    gen_batch.token + start,
                     nullptr,
-                    gen_batch.pos + i,
-                    gen_batch.n_seq_id + i,
-                    gen_batch.seq_id + i,
-                    gen_batch.logits + i,
+                    gen_batch.pos + start,
+                    gen_batch.n_seq_id + start,
+                    gen_batch.seq_id + start,
+                    gen_batch.logits + start,
                 };
-                
-                const int ret = llama_decode(ctx, batch_view);
+
+                int ret = llama_decode(ctx, view);
                 if (ret != 0) {
-                    llama_batch_free(gen_batch);
-                    
-                    if (ret < 0) {
-                        throw std::runtime_error("Fatal decode error in generation: " + std::to_string(ret));
+                    if (ret > 0 && local_cap > 1) {
+                        local_cap = std::max<int32_t>(1, local_cap / 2);
+                        dynamic_cache_miss++;
+                        continue;
                     }
-                    
-                    // 非致命错误，继续处理
-                    n_cache_miss += 1;
+                    decode_success = false;
                     break;
                 }
-                
-                // 🎯 关键：为每个客户端独立采样
-                for (int b = 0; b < (int)batch_to_client_map.size(); ++b) {
-                    const int client_id = batch_to_client_map[b];
-                    auto& client = clients[client_id];
-                    
-                    if (client.i_batch < i || client.i_batch >= i + n_tokens) continue;
-                    
+
+                for (int slot_idx : batch_slots) {
+                    Slot& slot = slots[slot_idx];
+                    if (!slot.active || slot.failed) {
+                        continue;
+                    }
+                    if (slot.i_batch < start || slot.i_batch >= start + n_tokens) {
+                        continue;
+                    }
+
+                    const int batch_pos = slot.i_batch - start;
+
                     try {
-                        // 🔑 关键：使用客户端专属的采样器和正确的批次位置
-                        const int batch_pos = client.i_batch - i;
-                        const llama_token new_token = common_sampler_sample(client.smpl, ctx, batch_pos);
-                        common_sampler_accept(client.smpl, new_token, true);
-                        
-                        // 🔧 修复停止标记泄漏：先检查停止条件，再决定是否添加到输出
+                        const llama_token new_token = common_sampler_sample(slot.smpl, ctx, batch_pos);
+                        common_sampler_accept(slot.smpl, new_token, true);
+
                         bool should_stop = false;
-                        
-                        // EOS token检查 - 如果是停止标记，直接停止，不添加到输出
                         if (new_token == eos_token || llama_vocab_is_eog(vocab, new_token)) {
                             should_stop = true;
                         }
-                        
-                        // 最大token数检查
-                        if (params->max_tokens > 0 && client.n_decoded >= params->max_tokens) {
+
+                        if (params->max_tokens > 0 && slot.n_decoded >= params->max_tokens) {
                             should_stop = true;
                         }
-                        
-                        // 🔑 关键修复：只有在非停止状态下才添加token到输出
+
                         if (!should_stop) {
-                            // 转换token为文本并添加到响应
                             const std::string token_str = common_token_to_piece(ctx, new_token);
-                            client.response += token_str;
-                            
-                            // 对话终止检查（仅在已添加内容后检查）
-                            if (client.n_decoded > 5 && 
-                                (client.response.find("\n\nUser:") != std::string::npos || 
-                                 client.response.find("\n\nHuman:") != std::string::npos)) {
+                            slot.response += token_str;
+
+                            if (slot.n_decoded > 5 &&
+                                (slot.response.find("\n\nUser:") != std::string::npos ||
+                                 slot.response.find("\n\nHuman:") != std::string::npos)) {
                                 should_stop = true;
                             }
                         }
-                        
-                        // 更新客户端状态（无论是否停止都需要更新）
-                        client.sampled = new_token;
-                        client.n_decoded++;
-                        
+
+                        slot.sampled = new_token;
+                        slot.n_decoded++;
+                        slot.i_batch = -1;
+
                         if (should_stop) {
-                            client.finished = true;
-                            active_clients--;
-                            n_total_gen += client.n_decoded;
-                            
-                            // 🧹 清理该客户端的KV缓存
-                            llama_kv_self_seq_rm(ctx, client.seq_id, 0, -1);
+                            finalize_slot(slot_idx, true);
+                            assign_next_prompt(slot_idx);
                         }
-                        
+
                     } catch (const std::exception& e) {
-                        client.failed = true;
-                        client.error_msg = "Sampling failed: " + std::string(e.what());
-                        active_clients--;
+                        Slot& err_slot = slots[slot_idx];
+                        err_slot.failed = true;
+                        err_slot.error_msg = std::string("Sampling failed: ") + e.what();
+                        err_slot.i_batch = -1;
+                        finalize_slot(slot_idx, false);
+                        assign_next_prompt(slot_idx);
                     }
                 }
+
+                start += n_tokens;
             }
-            
+
             llama_batch_free(gen_batch);
-        }
-        
-        // =============================================================================
-        // Phase 5: 结果处理和清理
-        // =============================================================================
-        
-        // 清理所有KV缓存
-        for (const auto& client : clients) {
-            if (client.seq_id > 0) {
-                llama_kv_self_seq_rm(ctx, client.seq_id, 0, -1);
+
+            if (!decode_success) {
+                throw std::runtime_error("Fatal decode error during generation batch");
             }
         }
-        
-        // 性能统计
+
         const auto t_end = ggml_time_us();
         const double total_time = (t_end - t_start) / 1e6;
-        
-        // 准备结果
+
+        for (int i = 0; i < seq_capacity; ++i) {
+            release_slot(slots[i]);
+        }
+
+        if (prefix_ready) {
+            llama_kv_self_seq_rm(ctx, 0, 0, -1);
+        }
+
         *results_out = new char*[n_prompts];
         for (int i = 0; i < n_prompts; ++i) {
-            const auto& client = clients[i];
-            
-            if (client.failed) {
-                // 失败的客户端返回错误信息
-                std::string error_result = "[ERROR] " + client.error_msg;
-                (*results_out)[i] = string_to_c_str(error_result);
-            } else {
-                // 🧹 增强的响应文本清理
-                std::string clean_response = client.response;
-                
-                // 定义所有可能的停止标记
-                const std::vector<std::string> stop_markers = {
-                    "<|im_end|>",
-                    "<|im_start|>", 
-                    "<end_of_turn>",
-                    "<start_of_turn>",
-                    "</s>",
-                    "<s>",
-                    "<|endoftext|>",
-                    "<|end|>",
-                    "<|start|>",
-                    "<eos>",
-                    "<bos>",
-                    "\n<|im_end|>",
-                    "\n<end_of_turn>",
-                    "\n</s>"
-                };
-                
-                // 逐个移除停止标记（多轮清理确保彻底）
-                bool found_marker = true;
-                int cleanup_rounds = 0;
-                while (found_marker && cleanup_rounds < 5) {
-                    found_marker = false;
-                    cleanup_rounds++;
-                    
-                    for (const auto& marker : stop_markers) {
-                        size_t pos = 0;
-                        while ((pos = clean_response.find(marker, pos)) != std::string::npos) {
-                            clean_response.erase(pos, marker.length());
-                            found_marker = true;
-                            // 不增加pos，从当前位置重新搜索
-                        }
-                    }
-                }
-                
-                // 移除无效字符
-                while (!clean_response.empty() && 
-                       (clean_response.front() == '?' || 
-                        clean_response.front() < 32 || 
-                        clean_response.front() > 126)) {
-                    clean_response = clean_response.substr(1);
-                }
-                
-                // 移除首尾空白
-                while (!clean_response.empty() && isspace(clean_response.back())) {
-                    clean_response.pop_back();
-                }
-                while (!clean_response.empty() && isspace(clean_response.front())) {
-                    clean_response = clean_response.substr(1);
-                }
-                
-                // 截断对话终止标记
-                const size_t pos = clean_response.find("\n\nUser:");
-                if (pos != std::string::npos) {
-                    clean_response = clean_response.substr(0, pos);
-                }
-                
-                (*results_out)[i] = string_to_c_str(clean_response);
-            }
+            (*results_out)[i] = string_to_c_str(final_responses[i]);
         }
-        
-        // 🔍 调试信息（可选）
-        #ifdef NEWRLLAMA_DEBUG
+
+#ifdef NEWRLLAMA_DEBUG
         std::cout << "=== Parallel Generation Performance ===" << std::endl;
         std::cout << "Total time: " << total_time << "s" << std::endl;
         std::cout << "Prompt tokens: " << n_total_prompt << std::endl;
         std::cout << "Generated tokens: " << n_total_gen << std::endl;
-        std::cout << "Cache misses: " << n_cache_miss << std::endl;
-        std::cout << "Prompt speed: " << n_total_prompt / total_time << " t/s" << std::endl;
-        std::cout << "Generation speed: " << n_total_gen / total_time << " t/s" << std::endl;
-        #endif
-        
-        return NEWRLLAMA_SUCCESS;
-        
-    } catch (const std::exception& e) {
-        // 🚨 全局错误处理
-        for (const auto& client : clients) {
-            if (client.seq_id > 0) {
-                llama_kv_self_seq_rm(ctx, client.seq_id, 0, -1);
-            }
+        std::cout << "Cache misses (dynamic throttling): " << dynamic_cache_miss << std::endl;
+        std::cout << "Sequence capacity: " << seq_capacity << std::endl;
+        if (total_time > 0) {
+            std::cout << "Prompt speed: " << n_total_prompt / total_time << " t/s" << std::endl;
+            std::cout << "Generation speed: " << n_total_gen / total_time << " t/s" << std::endl;
         }
-        
+#endif
+
+        return NEWRLLAMA_SUCCESS;
+
+    } catch (const std::exception& e) {
+        llama_kv_self_clear(ctx);
         set_error(error_message, std::string("Parallel generation failed: ") + e.what());
         return NEWRLLAMA_ERROR;
     }

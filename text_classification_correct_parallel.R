@@ -18,14 +18,14 @@ cat("Dataset created with", nrow(data_sample), "observations\n")
 # 1. Load the model once
 model <- model_load(
   model_path = "/Users/yaoshengleo/Desktop/gguf模型/gemma-3-12b-it-q4_0.gguf", 
-  n_gpu_layers = 48, 
+  n_gpu_layers = 50, 
   verbosity = 1
 )
 
 # 2. Create a reusable context with more sequences and larger context for parallel processing
 # n_seq_max should be at least equal to the number of parallel prompts
 # Increase n_ctx to provide more memory per sequence
-ctx <- context_create(model, n_ctx = 13000, n_seq_max = 10)
+ctx <- context_create(model, n_ctx = 9000, n_seq_max = 10)
 
 # 3. Prepare all prompts at once
 cat("Preparing all prompts for parallel processing...\n")
