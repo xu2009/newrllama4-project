@@ -679,7 +679,6 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
 
     std::vector<Slot> slots(seq_capacity);
     size_t next_prompt_idx = 0;
-    llama_seq_id next_seq_id = prefix_ready ? 1 : 1;
     int active_clients = 0;
 
     auto finalize_slot = [&](int slot_idx, bool success) {
@@ -711,7 +710,7 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
 
         while (next_prompt_idx < (size_t)n_prompts) {
             const size_t global_idx = next_prompt_idx++;
-            slot.seq_id = next_seq_id++;
+            slot.seq_id = static_cast<llama_seq_id>(slot_idx + 1);
             slot.global_index = static_cast<int>(global_idx);
             slot.full_tokens = &prompt_tokens_all[global_idx];
             slot.n_prompt = static_cast<int32_t>(slot.full_tokens->size());

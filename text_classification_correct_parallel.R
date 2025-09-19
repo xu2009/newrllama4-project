@@ -9,7 +9,7 @@ data <- textdata::dataset_ag_news()
 set.seed(123)
 data_sample <- data %>%
   group_by(class) %>%
-  slice_sample(n = 25, replace = FALSE) %>%
+  slice_sample(n = 5, replace = FALSE) %>%
   ungroup() %>%
   mutate(LLM_result = NA_character_)
 
@@ -22,10 +22,10 @@ model <- model_load(
   verbosity = 1
 )
 
-# 2. Create a reusable context with more sequences and larger context for parallel processing
-# n_seq_max should be at least equal to the number of parallel prompts
-# Increase n_ctx to provide more memory per sequence
-ctx <- context_create(model, n_ctx = 9000, n_seq_max = 10)
+# 2. Create a reusable context with adequate capacity for our 100 prompts
+# Set n_seq_max to 120 to comfortably handle 100 prompts without batch processing
+# Increase n_ctx to ensure each sequence has enough context space
+ctx <- context_create(model, n_ctx = 10000, n_seq_max = 20)
 
 # 3. Prepare all prompts at once
 cat("Preparing all prompts for parallel processing...\n")
