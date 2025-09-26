@@ -9,15 +9,33 @@ data_sample <- ag_news_sample %>%
 
 cat("Dataset created with", nrow(data_sample), "observations\n")
 
+response <- quick_llama("What is machine learning in one sentence?")
+cat(response)
+
+library(newrllama4)
+
+cache_dir <- get_model_cache_dir()
+cached <- list_cached_models()
+lock_path <- file.path(cache_dir, "gemma-3-1b-it-q4_0.gguf.lock")
+
+if (file.exists(lock_path)) {
+  unlink(lock_path)
+  message("清理了残留锁：", lock_path)
+} else {
+  message("缓存目录里没有锁文件：", cache_dir)
+}
+
+
+
 # 1. Load the model once
 model <- model_load(
-  model_path = "/Users/yaoshengleo/Desktop/gguf模型/gemma-3-12b-it-q4_0.gguf",
-  n_gpu_layers = 50,
+  model_path = "https://huggingface.co/MaziyarPanahi/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it.Q4_K_S.gguf",
+  n_gpu_layers = 99,
   verbosity = 1
 )
 
 # 2. Create a reusable context with n_seq_max smaller than prompt count (testing batch processing)
-ctx <- context_create(model, n_ctx = 1024, n_seq_max = 10)
+ctx <- context_create(model, n_ctx = 1024, n_seq_max = 10,verbosity = 1)
 
 # 3. Prepare all prompts at once
 cat("Preparing all prompts for parallel processing...\n")
@@ -52,12 +70,13 @@ tryCatch({
     context = ctx,
     prompts = all_prompts,
     max_tokens = 5L,
-    temperature = 0.1,
+    temperature = 0.7,
     top_k = 20L,
     top_p = 0.95,
     repeat_last_n = 32L,
     penalty_repeat = 1.05,
-    seed = 1234L
+    seed = 1234L,
+    progress = TRUE
   )
 
   # Record end time for parallel processing

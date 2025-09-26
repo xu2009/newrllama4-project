@@ -10,7 +10,7 @@
 #' chat template formatting and system prompts for instruction-tuned models.
 #'
 #' @param prompt Character string or vector of prompts to process
-#' @param model Model URL or path (default: Gemma 3 1B IT Q4_0)
+#' @param model Model URL or path (default: Gemma 3 4B IT Q4_K_S)
 #' @param n_threads Number of threads (default: auto-detect)
 #' @param n_gpu_layers Number of GPU layers (default: auto-detect)
 #' @param n_ctx Context size (default: 2048)
@@ -238,7 +238,7 @@ quick_llama_reset <- function() {
 #' @return Default model URL
 #' @noRd
 .get_default_model <- function() {
-  "https://huggingface.co/google/gemma-3-1b-it-qat-q4_0-gguf/resolve/main/gemma-3-1b-it-q4_0.gguf"
+  "https://huggingface.co/MaziyarPanahi/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it.Q4_K_S.gguf"
 }
 
 #' Detect optimal GPU layers

@@ -52,10 +52,10 @@ conversion steps.
    name together with `gguf` in the search query (e.g. `gemma gguf`).
 
 For a quick start, `quick_llama()` defaults to
-`gemma-3-1b-it-qat-q4_0-gguf`, a lightweight instruction-tuned model that
-downloads automatically on first use. You can swap in any other GGUF model by
-passing a different URL or local path; refer to the function reference for the
-`model` argument to see all available options.
+`gemma-3-4b-it.Q4_K_S.gguf`, an instruction-tuned Gemma 3 model that downloads
+automatically on first use. You can swap in any other GGUF model by passing a
+different URL or local path; refer to the function reference for the `model`
+argument to see all available options.
 
 ---
 
@@ -100,7 +100,7 @@ Modern instruction-tuned models are trained to respond to specific formats that 
 # 1. Load the model once (e.g., enabling GPU acceleration)
 # Using a large number for n_gpu_layers offloads as many layers as possible.
 model <- model_load(
-  model = "https://huggingface.co/google/gemma-3-1b-it-qat-q4_0-gguf/resolve/main/gemma-3-1b-it-q4_0.gguf",
+  model = "https://huggingface.co/MaziyarPanahi/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it.Q4_K_S.gguf",
   n_gpu_layers = 999
 )
 

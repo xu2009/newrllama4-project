@@ -30,7 +30,7 @@ quick_llama(
 \arguments{
 \item{prompt}{Character string or vector of prompts to process}
 
-\item{model}{Model URL or path (default: Gemma 3 1B IT Q4_0)}
+\item{model}{Model URL or path (default: Gemma 3 4B IT Q4_K_S)}
 
 \item{n_threads}{Number of threads (default: auto-detect)}
 
