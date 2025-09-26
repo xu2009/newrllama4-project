@@ -1,16 +1,10 @@
 library(dplyr)
-library(textdata)
 library(newrllama4)
 
-# Load data
-data <- textdata::dataset_ag_news()
+# Load bundled sample dataset
+data("ag_news_sample", package = "newrllama4")
 
-# Randomly sample 5 from each class (20 total observations)
-set.seed(123)
-data_sample <- data %>%
-  group_by(class) %>%
-  slice_sample(n = 5, replace = FALSE) %>%
-  ungroup() %>%
+data_sample <- ag_news_sample %>%
   mutate(LLM_result = NA_character_)
 
 cat("Dataset created with", nrow(data_sample), "observations\n")
@@ -18,12 +12,12 @@ cat("Dataset created with", nrow(data_sample), "observations\n")
 # 1. Load the model once
 model <- model_load(
   model_path = "/Users/yaoshengleo/Desktop/gguf模型/gemma-3-12b-it-q4_0.gguf",
-  n_gpu_layers = 30,
+  n_gpu_layers = 50,
   verbosity = 1
 )
 
 # 2. Create a reusable context with n_seq_max smaller than prompt count (testing batch processing)
-ctx <- context_create(model, n_ctx = 4000, n_seq_max = 10)
+ctx <- context_create(model, n_ctx = 1024, n_seq_max = 10)
 
 # 3. Prepare all prompts at once
 cat("Preparing all prompts for parallel processing...\n")
@@ -57,7 +51,7 @@ tryCatch({
   results <- generate_parallel(
     context = ctx,
     prompts = all_prompts,
-    max_tokens = 3L,
+    max_tokens = 5L,
     temperature = 0.1,
     top_k = 20L,
     top_p = 0.95,

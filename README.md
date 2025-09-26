@@ -31,6 +31,34 @@ That's it! The `install_newrllama()` function automatically detects your operati
 
 ---
 
+### About GGUF Models
+
+The `newrllama4` backend is powered by `llama.cpp`, which only supports models
+stored in the GGUF format. In practice this means every model you load through
+`model_load()` or `quick_llama()` must be a `.gguf` file.
+
+GGUF (GGML Unified Format) is a compact binary container designed for local
+inference. It packages model weights together with tokenizer metadata and other
+runtime information, enabling fast loading on CPUs or GPUs without additional
+conversion steps.
+
+**Finding GGUF models on Hugging Face**
+
+1. Open [huggingface.co](https://huggingface.co).
+2. In the search bar type `gguf` and press Enter.
+3. Click **“See all model results for "gguf"”** to view the full catalogue. As
+   of 2025-09-25 there are 127,756 GGUF models available.
+4. To narrow down to specific families—such as Gemma or Llama—include the model
+   name together with `gguf` in the search query (e.g. `gemma gguf`).
+
+For a quick start, `quick_llama()` defaults to
+`gemma-3-1b-it-qat-q4_0-gguf`, a lightweight instruction-tuned model that
+downloads automatically on first use. You can swap in any other GGUF model by
+passing a different URL or local path; refer to the function reference for the
+`model` argument to see all available options.
+
+---
+
 ### Quick Start
 
 You can start generating text with a single function call.
@@ -71,7 +99,10 @@ Modern instruction-tuned models are trained to respond to specific formats that 
 ```r
 # 1. Load the model once (e.g., enabling GPU acceleration)
 # Using a large number for n_gpu_layers offloads as many layers as possible.
-model <- model_load(model = "Llama-3.2-1B-Instruct", n_gpu_layers = 999)
+model <- model_load(
+  model = "https://huggingface.co/google/gemma-3-1b-it-qat-q4_0-gguf/resolve/main/gemma-3-1b-it-q4_0.gguf",
+  n_gpu_layers = 999
+)
 
 # 2. Create a reusable context with a specific size
 ctx <- context_create(model, n_ctx = 4096)

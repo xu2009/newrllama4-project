@@ -13,7 +13,8 @@ generate_parallel(
   temperature = 0.8,
   repeat_last_n = 64L,
   penalty_repeat = 1.1,
-  seed = -1L
+  seed = -1L,
+  progress = FALSE
 )
 }
 \arguments{
@@ -34,6 +35,9 @@ generate_parallel(
 \item{penalty_repeat}{Repetition penalty strength (default: 1.1)}
 
 \item{seed}{Random seed (default: -1 for random)}
+
+\item{progress}{If \code{TRUE}, displays a console progress bar indicating batch
+completion status while generations are running (default: FALSE).}
 }
 \value{
 Character vector of generated texts

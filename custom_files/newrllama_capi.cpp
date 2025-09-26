@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <cstdio>
 #ifdef __APPLE__
 #include <sys/sysctl.h>
 #elif defined(__linux__)
@@ -466,6 +467,11 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
     const int seq_cap_raw = (int)llama_n_seq_max(ctx);
     const int seq_capacity = std::max(1, seq_cap_raw > 0 ? seq_cap_raw : 1);
     const int32_t batch_cap_init = std::max<int32_t>(1, std::min<int32_t>(512, (int32_t)llama_n_batch(ctx)));
+    const int total_prompts = n_prompts;
+    const bool show_progress_bar = params->show_progress;
+    int prompts_completed = 0;
+    int spinner_index = 0;
+    const char spinner_chars[] = "|/-\\";
 
     const auto t_start = ggml_time_us();
     int32_t n_total_prompt = 0;
@@ -705,6 +711,24 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
         active_clients--;
         bool needs_reassign = next_prompt_idx < (size_t)n_prompts;
         release_slot(slot);
+        if (show_progress_bar) {
+            prompts_completed++;
+            float percent = (float)prompts_completed / std::max(total_prompts, 1);
+            if (percent > 1.0f) {
+                percent = 1.0f;
+            }
+            const int bar_width = 30;
+            int filled = (int)(percent * bar_width);
+            if (filled > bar_width) {
+                filled = bar_width;
+            }
+            std::string bar(filled, '=');
+            bar.append(bar_width - filled, ' ');
+            char spinner = spinner_chars[spinner_index];
+            spinner_index = (spinner_index + 1) % 4;
+            fprintf(stderr, "\r %c [%s] %d/%d (%3.0f%%)", spinner, bar.c_str(), prompts_completed, total_prompts, percent * 100.0f);
+            fflush(stderr);
+        }
         if (needs_reassign) {
             slots_pending_reassign.push_back(slot_idx);
         }
@@ -915,6 +939,11 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
         const auto t_end = ggml_time_us();
         const double total_time = (t_end - t_start) / 1e6;
 
+        if (show_progress_bar) {
+            fprintf(stderr, "\r [==============================] %d/%d (100%%)\n", total_prompts, total_prompts);
+            fflush(stderr);
+        }
+
         for (int i = 0; i < seq_capacity; ++i) {
             release_slot(slots[i]);
         }
@@ -944,6 +973,10 @@ NEWRLLAMA_API newrllama_error_code newrllama_generate_parallel(
         return NEWRLLAMA_SUCCESS;
 
     } catch (const std::exception& e) {
+        if (show_progress_bar) {
+            fprintf(stderr, "\r [==============================] %d/%d (100%%)\n", total_prompts, total_prompts);
+            fflush(stderr);
+        }
         llama_kv_self_clear(ctx);
         set_error(error_message, std::string("Parallel generation failed: ") + e.what());
         return NEWRLLAMA_ERROR;

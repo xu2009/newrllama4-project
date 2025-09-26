@@ -10,21 +10,27 @@ quick_llama(
   n_threads = NULL,
   n_gpu_layers = "auto",
   n_ctx = 2048L,
+  verbosity = 1L,
   max_tokens = 100L,
-  temperature = 0.7,
+  top_k = 20L,
   top_p = 0.9,
-  top_k = 40L,
-  repeat_penalty = 1.1,
+  temperature = 0.7,
+  repeat_last_n = 64L,
+  penalty_repeat = 1.1,
   min_p = 0.05,
-  stream = NULL,
+  system_prompt = "You are a helpful assistant.",
+  auto_format = TRUE,
+  chat_template = NULL,
+  stream = FALSE,
   seed = 1234L,
+  progress = interactive(),
   ...
 )
 }
 \arguments{
 \item{prompt}{Character string or vector of prompts to process}
 
-\item{model}{Model URL or path (default: Llama-3.2-1B-Instruct Q4_K_M)}
+\item{model}{Model URL or path (default: Gemma 3 1B IT Q4_0)}
 
 \item{n_threads}{Number of threads (default: auto-detect)}
 
@@ -32,21 +38,37 @@ quick_llama(
 
 \item{n_ctx}{Context size (default: 2048)}
 
+\item{verbosity}{Backend logging verbosity (default: 1L). Higher values show more
+detail: \code{0} prints only errors, \code{1} adds warnings, \code{2}
+includes informational messages, and \code{3} enables the most verbose debug
+output.}
+
 \item{max_tokens}{Maximum tokens to generate (default: 100)}
-
-\item{temperature}{Sampling temperature (default: 0.7)}
-
-\item{top_p}{Top-p sampling (default: 0.9)}
 
 \item{top_k}{Top-k sampling (default: 40)}
 
-\item{repeat_penalty}{Repetition penalty (default: 1.1)}
+\item{top_p}{Top-p sampling (default: 0.9)}
+
+\item{temperature}{Sampling temperature (default: 0.7)}
+
+\item{repeat_last_n}{Number of recent tokens to consider for repetition penalty (default: 64)}
+
+\item{penalty_repeat}{Repetition penalty strength (default: 1.1)}
 
 \item{min_p}{Minimum probability threshold (default: 0.05)}
+
+\item{system_prompt}{System prompt to add to conversation (default: "You are a helpful assistant.")}
+
+\item{auto_format}{Whether to automatically apply chat template formatting (default: TRUE)}
+
+\item{chat_template}{Custom chat template to use (default: NULL uses model's built-in template)}
 
 \item{stream}{Whether to stream output (default: auto-detect based on interactive())}
 
 \item{seed}{Random seed for reproducibility (default: 1234)}
+
+\item{progress}{Show a console progress bar when running parallel generation
+(default: \\code{interactive()}). Has no effect for single-prompt runs.}
 
 \item{...}{Additional parameters passed to generate() or generate_parallel()}
 }
@@ -55,20 +77,38 @@ Character string (single prompt) or named list (multiple prompts)
 }
 \description{
 A high-level convenience function that provides one-line LLM inference.
-Automatically handles model downloading, loading, and text generation.
+Automatically handles model downloading, loading, and text generation with optional
+chat template formatting and system prompts for instruction-tuned models.
 }
 \examples{
 \dontrun{
-# Simple usage
+# Simple usage with default chat template and system prompt
 response <- quick_llama("Hello, how are you?")
 
-# Multiple prompts
-responses <- quick_llama(c("Summarize AI", "Explain quantum computing"))
+# Raw text generation without chat template
+raw_response <- quick_llama("Complete this: The capital of France is", 
+                           auto_format = FALSE)
 
-# Custom parameters
+# Custom system prompt
+code_response <- quick_llama("Write a Python hello world program",
+                            system_prompt = "You are a Python programming expert.")
+
+# No system prompt
+response <- quick_llama("What is AI?", system_prompt = NULL)
+
+# Multiple prompts with custom settings
+responses <- quick_llama(c("Summarize AI", "Explain quantum computing"),
+                        temperature = 0.5, max_tokens = 150)
+
+# High creativity with verbose output
 creative_response <- quick_llama("Tell me a story", 
                                  temperature = 0.9, 
-                                 max_tokens = 200)
+                                 max_tokens = 200,
+                                 verbosity = 0L)
+
+# Custom chat template (if supported by model)
+custom_response <- quick_llama("Explain photosynthesis",
+                              chat_template = "<|user|>\n{user}\n<|assistant|>\n")
 }
 }
 \seealso{

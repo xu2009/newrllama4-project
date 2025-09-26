@@ -28,12 +28,15 @@ backend_free <- function() {
 #' Ollama repositories, and direct HTTPS URLs. Models are automatically cached to 
 #' avoid repeated downloads.
 #'
-#' @param model_path Path to local GGUF model file or URL. Supported URL formats:
+#' @param model_path Path to local GGUF model file, URL, or cached model name. Supported URL formats:
 #'   \itemize{
 #'     \item \code{https://} - Direct download from web servers
 #'     \item \code{hf://} - Hugging Face model repository (hf://username/model/file.gguf)
 #'     \item \code{ollama://} - Ollama model format (experimental)
 #'   }
+#'   If you previously downloaded a model through this package you can supply the
+#'   cached file name (or a distinctive fragment of it) instead of the full path
+#'   or URL. The loader will search the local cache and offer any matches.
 #' @param cache_dir Custom directory for downloaded models (default: NULL uses system cache directory)
 #' @param n_gpu_layers Number of transformer layers to offload to GPU (default: 0 for CPU-only). 
 #'   Set to -1 to offload all layers, or a positive integer for partial offloading
@@ -46,13 +49,10 @@ backend_free <- function() {
 #'   Useful for updating to newer model versions
 #' @param verify_integrity Verify file integrity using checksums when available (default: TRUE)
 #' @param check_memory Check if sufficient system memory is available before loading (default: TRUE)
-#' @param verbosity Control verbosity of output during model loading (default: 1L). 
-#'   \itemize{
-#'     \item \code{0} - Show all information (debug + info + warnings + errors)
-#'     \item \code{1} - Show important information (info + warnings + errors)
-#'     \item \code{2} - Show minimal information (warnings + errors only)
-#'     \item \code{3} - Show errors only or silent
-#'   }
+#' @param verbosity Control backend logging during model loading (default: 1L).
+#'   Larger numbers print more detail: \code{0} shows only errors, \code{1}
+#'   adds warnings, \code{2} prints informational messages, and \code{3}
+#'   enables the most verbose debug output.
 #' @return A model object (external pointer) that can be used with \code{\link{context_create}}, 
 #'   \code{\link{tokenize}}, and other model functions
 #' @export
@@ -83,7 +83,7 @@ backend_free <- function() {
 #' # Load with minimal verbosity (quiet mode)
 #' model <- model_load("/path/to/model.gguf", verbosity = 2L)
 #' }
-#' @seealso \code{\link{context_create}}, \code{\link{download_model}}, \code{\link{get_model_cache_dir}}
+#' @seealso \code{\link{context_create}}, \code{\link{download_model}}, \code{\link{get_model_cache_dir}}, \code{\link{list_cached_models}}
 model_load <- function(model_path, cache_dir = NULL, n_gpu_layers = 0L, use_mmap = TRUE, 
                        use_mlock = FALSE, show_progress = TRUE, force_redownload = FALSE, 
                        verify_integrity = TRUE, check_memory = TRUE, verbosity = 1L) {
@@ -92,6 +92,9 @@ model_load <- function(model_path, cache_dir = NULL, n_gpu_layers = 0L, use_mmap
   # Resolve model path (download if needed)
   resolved_path <- .resolve_model_path(model_path, cache_dir, show_progress, 
                                        force_redownload, verify_integrity)
+  if (is.null(resolved_path)) {
+    stop("Model selection was cancelled. Provide a specific path or URL to continue.", call. = FALSE)
+  }
   
   # Check memory availability before loading
   if (check_memory) {
@@ -122,13 +125,10 @@ model_load <- function(model_path, cache_dir = NULL, n_gpu_layers = 0L, use_mmap
 #'   of available CPU cores for optimal performance. Only affects CPU computation
 #' @param n_seq_max Maximum number of parallel sequences (default: 1). Used for batch
 #'   processing multiple conversations simultaneously. Higher values require more memory
-#' @param verbosity Control verbosity of output during context creation (default: 1L).
-#'   \itemize{
-#'     \item \code{0} - Show all information (debug + info + warnings + errors)
-#'     \item \code{1} - Show important information (info + warnings + errors)
-#'     \item \code{2} - Show minimal information (warnings + errors only)
-#'     \item \code{3} - Show errors only or silent
-#'   }
+#' @param verbosity Control backend logging during context creation (default: 1L).
+#'   Larger values print more information: \code{0} emits only errors, \code{1}
+#'   includes warnings, \code{2} adds informational logs, and \code{3}
+#'   enables the most verbose debug output.
 #' @return A context object (external pointer) used for text generation with \code{\link{generate}}
 #' @export
 #' @examples
@@ -368,10 +368,13 @@ generate <- function(context, tokens, max_tokens = 100L, top_k = 20L, top_p = 0.
 #' @param repeat_last_n Repetition penalty last n tokens (default: 64)
 #' @param penalty_repeat Repetition penalty strength (default: 1.1)
 #' @param seed Random seed (default: -1 for random)
+#' @param progress If \code{TRUE}, displays a console progress bar indicating batch
+#'   completion status while generations are running (default: FALSE).
 #' @return Character vector of generated texts
 #' @export
 generate_parallel <- function(context, prompts, max_tokens = 100L, top_k = 40L, top_p = 0.9,
-                              temperature = 0.8, repeat_last_n = 64L, penalty_repeat = 1.1, seed = -1L) {
+                              temperature = 0.8, repeat_last_n = 64L, penalty_repeat = 1.1,
+                              seed = -1L, progress = FALSE) {
   .ensure_backend_loaded()
   if (!inherits(context, "newrllama_context")) {
     stop("Expected a newrllama_context object", call. = FALSE)
@@ -386,7 +389,8 @@ generate_parallel <- function(context, prompts, max_tokens = 100L, top_k = 40L, 
         as.numeric(temperature),
         as.integer(repeat_last_n),
         as.numeric(penalty_repeat),
-        as.integer(seed))
+        as.integer(seed),
+        as.logical(progress))
 }
 
 #' Test tokenize function (debugging)
@@ -516,6 +520,130 @@ get_model_cache_dir <- function() {
   return(models_dir)
 }
 
+#' List cached models on disk
+#'
+#' Enumerates the models that have been downloaded to the local cache. This is
+#' useful when you want to reuse a previously downloaded model but no longer
+#' remember the original URL. The cache directory can be overridden with the
+#' `NEWRLLAMA_CACHE_DIR` environment variable or via the `cache_dir` argument.
+#'
+#' @param cache_dir Optional cache directory to inspect. Defaults to the package
+#'   cache used by `model_load()`.
+#'
+#' @return A data frame with one row per cached model and the columns
+#'   `name` (file name), `path` (absolute path), `size_bytes`, and `modified`.
+#'   Returns an empty data frame when no models are cached.
+#' @export
+list_cached_models <- function(cache_dir = NULL) {
+  cached <- .list_cached_models(cache_dir)
+  if (nrow(cached) == 0) {
+    message("No cached models were found. Use download_model() or model_load() with a URL to populate the cache.")
+  }
+  cached
+}
+
+#' @noRd
+.list_cached_models <- function(cache_dir = NULL) {
+  cache_dir <- .get_model_cache_dir(cache_dir)
+
+  if (!dir.exists(cache_dir)) {
+    return(data.frame(
+      name = character(),
+      path = character(),
+      size_bytes = numeric(),
+      modified = as.POSIXct(character()),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  files <- list.files(cache_dir, pattern = "\\.(gguf|bin)$", full.names = TRUE, recursive = TRUE)
+  if (length(files) == 0) {
+    return(data.frame(
+      name = character(),
+      path = character(),
+      size_bytes = numeric(),
+      modified = as.POSIXct(character()),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  info <- file.info(files)
+  data.frame(
+    name = basename(files),
+    path = normalizePath(files, winslash = "/", mustWork = FALSE),
+    size_bytes = as.numeric(info$size),
+    modified = info$mtime,
+    stringsAsFactors = FALSE
+  )
+}
+
+#' @noRd
+.resolve_model_name <- function(model_name, cache_dir = NULL) {
+  if (is.null(model_name) || length(model_name) == 0 || nchar(model_name) == 0) {
+    return(NULL)
+  }
+
+  cached <- .list_cached_models(cache_dir)
+  if (nrow(cached) == 0) {
+    return(NULL)
+  }
+
+  matches <- cached[grepl(model_name, cached$name, ignore.case = TRUE), , drop = FALSE]
+  if (nrow(matches) == 0) {
+    matches <- cached[grepl(model_name, cached$path, ignore.case = TRUE), , drop = FALSE]
+  }
+
+  if (nrow(matches) == 0) {
+    return(NULL)
+  }
+
+  matches <- matches[order(matches$modified, decreasing = TRUE), , drop = FALSE]
+
+  if (nrow(matches) == 1) {
+    message("Using cached model: ", matches$path)
+    return(matches$path)
+  }
+
+  message(sprintf("Multiple cached models matched '%s':", model_name))
+  for (i in seq_len(nrow(matches))) {
+    size_mb <- round(matches$size_bytes[i] / 1024 / 1024, 1)
+    message(sprintf("[%d] %s (%.1f MB) - %s", i, matches$name[i], size_mb, matches$path[i]))
+  }
+
+  selection_option <- getOption("newrllama.cache_selection", default = NULL)
+  if (!is.null(selection_option)) {
+    idx <- suppressWarnings(as.integer(selection_option))
+    if (!is.na(idx) && idx >= 1 && idx <= nrow(matches)) {
+      message("Selected cached model via option newrllama.cache_selection = ", idx)
+      return(matches$path[idx])
+    }
+    warning("Ignoring invalid newrllama.cache_selection option; falling back to interactive prompt.")
+  }
+
+  if (!interactive()) {
+    stop(
+      sprintf(
+        "Multiple cached models matched '%s'. Use list_cached_models() to inspect the cache and provide a more specific name or path.",
+        model_name
+      ),
+      call. = FALSE
+    )
+  }
+
+  repeat {
+    answer <- readline("Enter the number of the model to use (press Enter to cancel): ")
+    if (identical(answer, "")) {
+      message("Selection cancelled. Please provide a more specific path or URL.")
+      return(NULL)
+    }
+    idx <- suppressWarnings(as.integer(answer))
+    if (!is.na(idx) && idx >= 1 && idx <= nrow(matches)) {
+      return(matches$path[idx])
+    }
+    message(sprintf("Invalid selection. Please enter a number between 1 and %d.", nrow(matches)))
+  }
+}
+
 #' Generate cache path for a model URL
 #' @param model_url The model URL
 #' @param cache_dir Custom cache directory (optional)
@@ -613,6 +741,18 @@ get_model_cache_dir <- function() {
     return(cache_path)
   }
   
+  # Attempt to resolve by cached model name
+  cached_path <- .resolve_model_name(model_path, cache_dir)
+  if (!is.null(cached_path)) {
+    if (verify_integrity && !.verify_file_integrity(cached_path)) {
+      stop(
+        sprintf("Cached model at '%s' failed the integrity check. Consider redownloading the model.", cached_path),
+        call. = FALSE
+      )
+    }
+    return(cached_path)
+  }
+
   # If it's neither a URL nor an existing file, it's an error
   stop("Model file does not exist and is not a valid URL: ", model_path, call. = FALSE)
 }

@@ -28,7 +28,7 @@ extern "C" {
   SEXP r_detokenize(SEXP model_ptr, SEXP tokens);
   SEXP r_apply_chat_template(SEXP model_ptr, SEXP tmpl, SEXP chat_messages, SEXP add_ass);
   SEXP r_generate(SEXP ctx_ptr, SEXP tokens, SEXP max_tokens, SEXP top_k, SEXP top_p, SEXP temperature, SEXP repeat_last_n, SEXP penalty_repeat, SEXP seed);
-  SEXP r_generate_parallel(SEXP ctx_ptr, SEXP prompts, SEXP max_tokens, SEXP top_k, SEXP top_p, SEXP temperature, SEXP repeat_last_n, SEXP penalty_repeat, SEXP seed);
+  SEXP r_generate_parallel(SEXP ctx_ptr, SEXP prompts, SEXP max_tokens, SEXP top_k, SEXP top_p, SEXP temperature, SEXP repeat_last_n, SEXP penalty_repeat, SEXP seed, SEXP progress);
   
   // Token functions
   SEXP r_token_get_text(SEXP model_ptr, SEXP token);
@@ -77,7 +77,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"c_r_detokenize", (DL_FUNC) &r_detokenize, 2},
   {"c_r_apply_chat_template", (DL_FUNC) &r_apply_chat_template, 4},
   {"c_r_generate", (DL_FUNC) &r_generate, 9},
-  {"c_r_generate_parallel", (DL_FUNC) &r_generate_parallel, 9},
+  {"c_r_generate_parallel", (DL_FUNC) &r_generate_parallel, 10},
   
   // Token functions
   {"c_r_token_get_text", (DL_FUNC) &r_token_get_text, 2},

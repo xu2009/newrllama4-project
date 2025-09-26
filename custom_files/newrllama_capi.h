@@ -23,7 +23,16 @@ typedef struct llama_model*  newrllama_model_handle;
 typedef struct llama_context* newrllama_context_handle;
 typedef enum { NEWRLLAMA_SUCCESS = 0, NEWRLLAMA_ERROR = 1 } newrllama_error_code;
 struct newrllama_chat_message { const char* role; const char* content; };
-struct newrllama_parallel_params { int max_tokens; int top_k; float top_p; float temperature; int repeat_last_n; float penalty_repeat; int32_t seed; };
+struct newrllama_parallel_params {
+    int max_tokens;
+    int top_k;
+    float top_p;
+    float temperature;
+    int repeat_last_n;
+    float penalty_repeat;
+    int32_t seed;
+    bool show_progress;
+};
 
 NEWRLLAMA_API newrllama_error_code newrllama_backend_init(const char** error_message);
 NEWRLLAMA_API void newrllama_backend_free();

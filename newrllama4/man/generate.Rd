@@ -8,12 +8,12 @@ generate(
   context,
   tokens,
   max_tokens = 100L,
-  top_k = 40L,
+  top_k = 20L,
   top_p = 0.9,
-  temperature = 0.8,
+  temperature = 0.7,
   repeat_last_n = 64L,
   penalty_repeat = 1.1,
-  seed = -1L
+  seed = 1234L
 )
 }
 \arguments{

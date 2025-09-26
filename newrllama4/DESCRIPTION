@@ -1,7 +1,7 @@
 Package: newrllama4
 Type: Package
 Title: R Interface to Llama.cpp with Runtime Library Loading and Model Download
-Version: 1.0.83
+Version: 1.0.84
 Date: 2025-07-18
 Authors@R: person("yaoshengleo", role = c("aut", "cre"), email = "yaoshengleo@example.com")
 Author: yaoshengleo [aut, cre]
@@ -25,4 +25,5 @@ URL: https://github.com/xu2009/newrllama4-project
 BugReports: https://github.com/xu2009/newrllama4-project/issues
 SystemRequirements: C++17, libcurl (optional, for model downloading)
 Encoding: UTF-8
+LazyData: true
 RoxygenNote: 7.3.2

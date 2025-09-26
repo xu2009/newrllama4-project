@@ -13,16 +13,20 @@ model_load(
   show_progress = TRUE,
   force_redownload = FALSE,
   verify_integrity = TRUE,
-  check_memory = TRUE
+  check_memory = TRUE,
+  verbosity = 1L
 )
 }
 \arguments{
-\item{model_path}{Path to local GGUF model file or URL. Supported URL formats:
+\item{model_path}{Path to local GGUF model file, URL, or cached model name. Supported URL formats:
 \itemize{
   \item \code{https://} - Direct download from web servers
   \item \code{hf://} - Hugging Face model repository (hf://username/model/file.gguf)
   \item \code{ollama://} - Ollama model format (experimental)
-}}
+}
+If you previously downloaded a model through this package you can supply the
+cached file name (or a distinctive fragment of it) instead of the full path
+or URL. The loader will search the local cache and offer any matches.}
 
 \item{cache_dir}{Custom directory for downloaded models (default: NULL uses system cache directory)}
 
@@ -43,6 +47,11 @@ Useful for updating to newer model versions}
 \item{verify_integrity}{Verify file integrity using checksums when available (default: TRUE)}
 
 \item{check_memory}{Check if sufficient system memory is available before loading (default: TRUE)}
+
+\item{verbosity}{Control backend logging during model loading (default: 1L).
+Larger numbers print more detail: \code{0} shows only errors, \code{1}
+adds warnings, \code{2} prints informational messages, and \code{3}
+enables the most verbose debug output.}
 }
 \value{
 A model object (external pointer) that can be used with \code{\link{context_create}}, 
@@ -77,8 +86,11 @@ model <- model_load("https://example.com/model.gguf",
 model <- model_load("/path/to/large_model.gguf", 
                     n_gpu_layers = -1,     # All layers on GPU
                     use_mlock = TRUE)      # Lock in memory
+
+# Load with minimal verbosity (quiet mode)
+model <- model_load("/path/to/model.gguf", verbosity = 2L)
 }
 }
 \seealso{
-\code{\link{context_create}}, \code{\link{download_model}}, \code{\link{get_model_cache_dir}}
+\code{\link{context_create}}, \code{\link{download_model}}, \code{\link{get_model_cache_dir}}, \code{\link{list_cached_models}}
 }

@@ -4,7 +4,13 @@
 \alias{context_create}
 \title{Create Inference Context for Text Generation}
 \usage{
-context_create(model, n_ctx = 2048L, n_threads = 4L, n_seq_max = 1L)
+context_create(
+  model,
+  n_ctx = 2048L,
+  n_threads = 4L,
+  n_seq_max = 1L,
+  verbosity = 1L
+)
 }
 \arguments{
 \item{model}{A model object returned by \code{\link{model_load}}}
@@ -18,6 +24,11 @@ of available CPU cores for optimal performance. Only affects CPU computation}
 
 \item{n_seq_max}{Maximum number of parallel sequences (default: 1). Used for batch
 processing multiple conversations simultaneously. Higher values require more memory}
+
+\item{verbosity}{Control backend logging during context creation (default: 1L).
+Larger values print more information: \code{0} emits only errors, \code{1}
+includes warnings, \code{2} adds informational logs, and \code{3}
+enables the most verbose debug output.}
 }
 \value{
 A context object (external pointer) used for text generation with \code{\link{generate}}
@@ -42,6 +53,9 @@ fast_ctx <- context_create(model, n_ctx = 2048, n_threads = 8)
 
 # Context for batch processing multiple conversations
 batch_ctx <- context_create(model, n_ctx = 2048, n_seq_max = 4)
+
+# Create context with minimal verbosity (quiet mode)
+quiet_ctx <- context_create(model, verbosity = 2L)
 }
 }
 \seealso{

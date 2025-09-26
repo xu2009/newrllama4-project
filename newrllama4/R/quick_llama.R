@@ -10,7 +10,7 @@
 #' chat template formatting and system prompts for instruction-tuned models.
 #'
 #' @param prompt Character string or vector of prompts to process
-#' @param model Model URL or path (default: Llama-3.2-1B-Instruct Q4_K_M)
+#' @param model Model URL or path (default: Gemma 3 1B IT Q4_0)
 #' @param n_threads Number of threads (default: auto-detect)
 #' @param n_gpu_layers Number of GPU layers (default: auto-detect)
 #' @param n_ctx Context size (default: 2048)
@@ -18,7 +18,10 @@
 #' @param temperature Sampling temperature (default: 0.7)
 #' @param top_p Top-p sampling (default: 0.9)
 #' @param top_k Top-k sampling (default: 40)
-#' @param verbosity Control verbosity of output (default: 1L). 0=all, 1=info+warnings+errors, 2=warnings+errors, 3=errors only
+#' @param verbosity Backend logging verbosity (default: 1L). Higher values show more
+#'   detail: \code{0} prints only errors, \code{1} adds warnings, \code{2}
+#'   includes informational messages, and \code{3} enables the most verbose debug
+#'   output.
 #' @param repeat_last_n Number of recent tokens to consider for repetition penalty (default: 64)
 #' @param penalty_repeat Repetition penalty strength (default: 1.1)
 #' @param min_p Minimum probability threshold (default: 0.05)
@@ -27,6 +30,8 @@
 #' @param chat_template Custom chat template to use (default: NULL uses model's built-in template)
 #' @param stream Whether to stream output (default: auto-detect based on interactive())
 #' @param seed Random seed for reproducibility (default: 1234)
+#' @param progress Show a console progress bar when running parallel generation
+#'   (default: \\code{interactive()}). Has no effect for single-prompt runs.
 #' @param ... Additional parameters passed to generate() or generate_parallel()
 #'
 #' @return Character string (single prompt) or named list (multiple prompts)
@@ -81,6 +86,7 @@ quick_llama <- function(prompt,
                         chat_template = NULL,
                         stream = FALSE,
                         seed = 1234L,
+                        progress = interactive(),
                         ...) {
   
   # Validate inputs
@@ -167,7 +173,7 @@ quick_llama <- function(prompt,
       formatted_prompts <- prompt
     }
     .generate_multiple(formatted_prompts, max_tokens, top_k, top_p, temperature, 
-                       repeat_last_n, penalty_repeat, seed, stream)
+                       repeat_last_n, penalty_repeat, seed, stream, progress)
   }
   
   # Clean up special tokens from output
@@ -232,7 +238,7 @@ quick_llama_reset <- function() {
 #' @return Default model URL
 #' @noRd
 .get_default_model <- function() {
-  "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+  "https://huggingface.co/google/gemma-3-1b-it-qat-q4_0-gguf/resolve/main/gemma-3-1b-it-q4_0.gguf"
 }
 
 #' Detect optimal GPU layers
@@ -363,7 +369,7 @@ quick_llama_reset <- function() {
 #' @return Named list of generated texts
 #' @noRd
 .generate_multiple <- function(prompts, max_tokens, top_k, top_p, temperature, 
-                               repeat_last_n, penalty_repeat, seed, stream, ...) {
+                               repeat_last_n, penalty_repeat, seed, stream, progress, ...) {
   
   context <- .quick_llama_env$context
   
@@ -377,7 +383,8 @@ quick_llama_reset <- function() {
                               temperature = temperature,
                               repeat_last_n = repeat_last_n,
                               penalty_repeat = penalty_repeat,
-                              seed = seed)
+                              seed = seed,
+                              progress = progress)
   
   # Return as named list
   names(results) <- paste0("prompt_", seq_along(prompts))

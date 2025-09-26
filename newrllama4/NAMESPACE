@@ -28,6 +28,7 @@ export(tokenize_test)
 # Export model download functions
 export(download_model)
 export(get_model_cache_dir)
+export(list_cached_models)
 
 # Export high-level convenience functions
 export(quick_llama)

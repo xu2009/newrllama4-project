@@ -1,16 +1,10 @@
 library(dplyr)
-library(textdata)
 library(newrllama4)
 
-# Load data
-data <- textdata::dataset_ag_news()
+# Load bundled sample dataset
+data("ag_news_sample", package = "newrllama4")
 
-# Randomly sample 25 from each class (100 total observations)
-set.seed(123)
-data_sample <- data %>%
-  group_by(class) %>%
-  slice_sample(n = 25, replace = FALSE) %>%
-  ungroup() %>%
+data_sample <- ag_news_sample %>%
   mutate(LLM_result = NA_character_)
 
 cat("Dataset created with", nrow(data_sample), "observations\n")
@@ -23,7 +17,7 @@ model <- model_load(
 )
 
 # 2. Create a reusable context
-ctx <- context_create(model, n_ctx = 2048)
+ctx_1 <- context_create(model, n_ctx = 1024)
 
 # Record start time for single sequence processing
 single_start_time <- Sys.time()
@@ -50,7 +44,7 @@ for (i in 1:nrow(data_sample)) {
     
     # 5. Tokenize and generate
     tokens <- tokenize(model, formatted_prompt)
-    output_tokens <- generate(ctx, tokens, max_tokens = 5, temperature = 0.1)
+    output_tokens <- generate(ctx_1, tokens, max_tokens = 5, temperature = 0.1)
     
     # Store the result (output_tokens is already text)
     data_sample$LLM_result[i] <- trimws(gsub("\\n.*$", "", output_tokens))

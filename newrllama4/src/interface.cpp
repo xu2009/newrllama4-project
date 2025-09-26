@@ -275,7 +275,7 @@ SEXP r_generate(SEXP ctx_ptr, SEXP tokens, SEXP max_tokens, SEXP top_k, SEXP top
     return CharacterVector::create(result);
 }
 
-SEXP r_generate_parallel(SEXP ctx_ptr, SEXP prompts, SEXP max_tokens, SEXP top_k, SEXP top_p, SEXP temperature, SEXP repeat_last_n, SEXP penalty_repeat, SEXP seed) {
+SEXP r_generate_parallel(SEXP ctx_ptr, SEXP prompts, SEXP max_tokens, SEXP top_k, SEXP top_p, SEXP temperature, SEXP repeat_last_n, SEXP penalty_repeat, SEXP seed, SEXP progress) {
     if (!newrllama_api_is_loaded()) {
         stop("Backend library is not loaded. Please run install_newrllama() first.");
     }
@@ -288,13 +288,14 @@ SEXP r_generate_parallel(SEXP ctx_ptr, SEXP prompts, SEXP max_tokens, SEXP top_k
     int repeat_last_n_int = as<int>(repeat_last_n);
     float penalty_repeat_float = as<float>(penalty_repeat);
     int32_t seed_int = as<int32_t>(seed);
+    bool progress_bool = as<bool>(progress);
     
     std::vector<const char*> prompts_c;
     for(int i = 0; i < prompts_vec.size(); ++i) {
         prompts_c.push_back(CHAR(STRING_ELT(prompts_vec, i)));
     }
     
-    struct newrllama_parallel_params params = {max_tokens_int, top_k_int, top_p_float, temperature_float, repeat_last_n_int, penalty_repeat_float, seed_int};
+    struct newrllama_parallel_params params = {max_tokens_int, top_k_int, top_p_float, temperature_float, repeat_last_n_int, penalty_repeat_float, seed_int, progress_bool};
     char** results_c = nullptr;
     const char* error_message = nullptr;
     check_error(newrllama_api.generate_parallel(ctx, prompts_c.data(), prompts_c.size(), &params, &results_c, &error_message), error_message);
